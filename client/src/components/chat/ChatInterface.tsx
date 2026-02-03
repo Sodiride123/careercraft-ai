@@ -54,8 +54,35 @@ export function ChatInterface({ onJobCreated }: ChatInterfaceProps) {
   }, []);
 
   const extractLinkedInUrl = (text: string): string | null => {
-    const linkedinMatch = text.match(/https?:\/\/(www\.)?linkedin\.com\/[^\s]+/i);
-    return linkedinMatch ? linkedinMatch[0] : null;
+    // Remove any whitespace
+    const cleanText = text.trim();
+    
+    // Pattern 1: Full URL with protocol (https://linkedin.com/in/username or https://www.linkedin.com/in/username)
+    let linkedinMatch = cleanText.match(/https?:\/\/(www\.)?linkedin\.com\/[^\s]+/i);
+    if (linkedinMatch) {
+      return linkedinMatch[0];
+    }
+    
+    // Pattern 2: URL without protocol (linkedin.com/in/username or www.linkedin.com/in/username)
+    linkedinMatch = cleanText.match(/(www\.)?linkedin\.com\/[^\s]+/i);
+    if (linkedinMatch) {
+      return `https://${linkedinMatch[0]}`;
+    }
+    
+    // Pattern 3: Just the path (in/username)
+    linkedinMatch = cleanText.match(/^in\/[a-zA-Z0-9-]+\/?$/i);
+    if (linkedinMatch) {
+      return `https://www.linkedin.com/${linkedinMatch[0]}`;
+    }
+    
+    // Pattern 4: Just the username (username or patrick-taylor-au)
+    // This is a bit more aggressive - only match if it looks like a LinkedIn username
+    // (alphanumeric with hyphens, no spaces, reasonable length)
+    if (/^[a-zA-Z0-9-]{3,100}$/.test(cleanText) && cleanText.includes('-')) {
+      return `https://www.linkedin.com/in/${cleanText}`;
+    }
+    
+    return null;
   };
 
   const pollJobStatus = async (jobId: string) => {
