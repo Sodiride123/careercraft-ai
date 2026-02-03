@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Token Monitor - CareerCraft AI</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* CareerCraft Neo-Professional Futurist Theme */
+            --primary: hsl(330, 80%, 60%);
+            --primary-dark: hsl(300, 80%, 50%);
+            --background: hsl(0, 0%, 99%);
+            --foreground: hsl(300, 10%, 20%);
+            --card: hsl(0, 0%, 100%);
+            --card-foreground: hsl(300, 10%, 20%);
+            --secondary: hsl(300, 5%, 96%);
+            --muted: hsl(300, 2.5%, 97%);
+            --muted-foreground: hsl(300, 25%, 50%);
+            --border: hsl(300, 10%, 90%);
+            --accent: hsl(330, 10%, 95%);
+            --radius: 0.5rem;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--background);
+            color: var(--foreground);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .logo {
+            width: 48px;
+            height: 48px;
+            border-radius: var(--radius);
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 700;
+            font-size: 1.25rem;
+            box-shadow: 0 4px 12px rgba(233, 30, 140, 0.2);
+        }
+
+        .header h1 {
+            font-size: 1.875rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header-subtitle {
+            font-size: 0.875rem;
+            color: var(--muted-foreground);
+            margin-top: 0.25rem;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .last-update {
+            font-size: 0.813rem;
+            color: var(--muted-foreground);
+            padding: 0.5rem 1rem;
+            background: var(--secondary);
+            border-radius: var(--radius);
+        }
+
+        .refresh-btn {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            border: none;
+            color: white;
+            padding: 0.625rem 1.5rem;
+            border-radius: var(--radius);
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+            box-shadow: 0 4px 12px rgba(233, 30, 140, 0.2);
+        }
+
+        .refresh-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(233, 30, 140, 0.3);
+        }
+
+        .refresh-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--card);
+            border-radius: calc(var(--radius) * 1.5);
+            padding: 1.5rem;
+            border: 1px solid var(--border);
+            transition: all 0.2s;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+            border-color: var(--primary);
+        }
+
+        .stat-card .label {
+            font-size: 0.75rem;
+            color: var(--muted-foreground);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.75rem;
+            font-weight: 600;
+        }
+
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat-card .subtext {
+            font-size: 0.75rem;
+            color: var(--muted-foreground);
+        }
+
+        /* Charts Section */
+        .charts-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .chart-card {
+            background: var(--card);
+            border-radius: calc(var(--radius) * 1.5);
+            padding: 1.5rem;
+            border: 1px solid var(--border);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+
+        .chart-card h2 {
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            color: var(--foreground);
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+        }
+
+        /* Tables */
+        .table-card {
+            background: var(--card);
+            border-radius: calc(var(--radius) * 1.5);
+            padding: 1.5rem;
+            border: 1px solid var(--border);
+            margin-bottom: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        }
+
+        .table-card h2 {
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: var(--foreground);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            text-align: left;
+            padding: 0.75rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--muted-foreground);
+            background: var(--secondary);
+            border-bottom: 1px solid var(--border);
+        }
+
+        td {
+            padding: 0.75rem;
+            font-size: 0.875rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        tr:hover {
+            background: var(--accent);
+        }
+
+        /* Badge */
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: calc(var(--radius) * 0.75);
+            font-size: 0.75rem;
+            font-weight: 500;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 3rem;
+            color: var(--muted-foreground);
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 4px solid var(--secondary);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .header {
+                flex-direction: column;
+                gap: 1rem;
+                align-items: flex-start;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .charts-section {
+                grid-template-columns: 1fr;
+            }
+
+            .header h1 {
+                font-size: 1.5rem;
+            }
+        }
+
+        /* Decorative Background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 400px;
+            background: linear-gradient(to bottom, rgba(233, 30, 140, 0.05), transparent);
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        body::after {
+            content: '';
+            position: fixed;
+            top: -20%;
+            right: -10%;
+            width: 500px;
+            height: 500px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(156, 39, 176, 0.1), transparent);
+            filter: blur(60px);
+            pointer-events: none;
+            z-index: -1;
+        }
+    </style>
+<script src="https://sites.super.betamyninja.ai/_assets/ninja-daytona-script.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-left">
+                <div class="logo">TM</div>
+                <div>
+                    <h1>Token Monitor</h1>
+                    <div class="header-subtitle">CareerCraft AI Usage Analytics</div>
+                </div>
+            </div>
+            <div class="header-actions">
+                <div class="last-update" id="lastUpdate">Loading...</div>
+                <button class="refresh-btn" onclick="refreshData()" id="refreshBtn">
+                    🔄 Refresh
+                </button>
+            </div>
+        </div>
+
+        <!-- Stats Grid -->
+        <div class="stats-grid" id="statsGrid">
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Loading statistics...</p>
+            </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="charts-section">
+            <div class="chart-card">
+                <h2>📊 Token Usage Timeline</h2>
+                <div class="chart-container">
+                    <canvas id="timelineChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <h2>💰 Cost Breakdown</h2>
+                <div class="chart-container">
+                    <canvas id="costChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sessions Table -->
+        <div class="table-card">
+            <h2>📝 Recent Sessions</h2>
+            <div style="overflow-x: auto;">
+                <table id="sessionsTable">
+                    <thead>
+                        <tr>
+                            <th>Session ID</th>
+                            <th>Timestamp</th>
+                            <th>Input Tokens</th>
+                            <th>Output Tokens</th>
+                            <th>Cost</th>
+                            <th>Model</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sessionsBody">
+                        <tr><td colspan="6" class="loading">Loading sessions...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let timelineChart, costChart;
+        let isRefreshing = false;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            loadData();
+            // Auto-refresh every 5 seconds
+            setInterval(loadData, 5000);
+        });
+
+        async function loadData() {
+            try {
+                console.log('Loading data...');
+                const [stats, timeline, sessions] = await Promise.all([
+                    fetch('/api/stats').then(r => {
+                        console.log('Stats loaded');
+                        return r.json();
+                    }),
+                    fetch('/api/usage/timeline').then(r => {
+                        console.log('Timeline loaded');
+                        return r.json();
+                    }),
+                    fetch('/api/sessions').then(r => {
+                        console.log('Sessions loaded');
+                        return r.json();
+                    })
+                ]);
+
+                console.log('Updating stats...');
+                updateStats(stats);
+                console.log('Updating charts...');
+                updateCharts(timeline, stats);
+                console.log('Updating sessions...');
+                updateSessions(sessions);
+                console.log('Updating last update...');
+                updateLastUpdate();
+                console.log('Data load complete!');
+            } catch (error) {
+                console.error('Error loading data:', error);
+                alert('Error loading data: ' + error.message);
+            }
+        }
+
+        function updateStats(data) {
+            const stats = data.stats;
+            const statsHtml = `
+                <div class="stat-card">
+                    <div class="label">Total Cost</div>
+                    <div class="value">$${stats.total_cost.toFixed(4)}</div>
+                    <div class="subtext">Across all sessions</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Input Tokens</div>
+                    <div class="value">${stats.total_input_tokens.toLocaleString()}</div>
+                    <div class="subtext">Sent to Claude</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Output Tokens</div>
+                    <div class="value">${stats.total_output_tokens.toLocaleString()}</div>
+                    <div class="subtext">Received from Claude</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Cache Write</div>
+                    <div class="value">${stats.total_cache_write_tokens.toLocaleString()}</div>
+                    <div class="subtext">Tokens cached</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Cache Read</div>
+                    <div class="value">${stats.total_cache_read_tokens.toLocaleString()}</div>
+                    <div class="subtext">Tokens from cache</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Total Sessions</div>
+                    <div class="value">${stats.total_sessions}</div>
+                    <div class="subtext">${stats.total_messages} messages</div>
+                </div>
+            `;
+            document.getElementById('statsGrid').innerHTML = statsHtml;
+        }
+
+        function updateCharts(timeline, stats) {
+            // Timeline Chart
+            const ctx1 = document.getElementById('timelineChart');
+            if (timelineChart) timelineChart.destroy();
+            
+            timelineChart = new Chart(ctx1, {
+                type: 'line',
+                data: {
+                    labels: timeline.timeline.map(t => new Date(t.timestamp)),
+                    datasets: [
+                        {
+                            label: 'Input Tokens',
+                            data: timeline.timeline.map(t => t.input_tokens),
+                            borderColor: 'hsl(330, 80%, 60%)',
+                            backgroundColor: 'hsla(330, 80%, 60%, 0.1)',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Output Tokens',
+                            data: timeline.timeline.map(t => t.output_tokens),
+                            borderColor: 'hsl(300, 80%, 50%)',
+                            backgroundColor: 'hsla(300, 80%, 50%, 0.1)',
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: true }
+                    },
+                    scales: {
+                        x: { type: 'time', time: { unit: 'minute' } },
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+
+            // Cost Chart
+            const ctx2 = document.getElementById('costChart');
+            if (costChart) costChart.destroy();
+
+            const totalStats = stats.stats;
+            const inputCost = (totalStats.total_input_tokens / 1000000) * 15;
+            const outputCost = (totalStats.total_output_tokens / 1000000) * 75;
+            const cacheWriteCost = (totalStats.total_cache_write_tokens / 1000000) * 18.75;
+            const cacheReadCost = (totalStats.total_cache_read_tokens / 1000000) * 1.875;
+
+            costChart = new Chart(ctx2, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Input', 'Output', 'Cache Write', 'Cache Read'],
+                    datasets: [{
+                        data: [inputCost, outputCost, cacheWriteCost, cacheReadCost],
+                        backgroundColor: [
+                            'hsl(330, 80%, 60%)',
+                            'hsl(300, 80%, 50%)',
+                            'hsl(280, 70%, 55%)',
+                            'hsl(260, 60%, 60%)'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+        }
+
+        function updateSessions(data) {
+            const sessions = data.sessions.slice(0, 10); // Show last 10
+            const tbody = document.getElementById('sessionsBody');
+            
+            if (sessions.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--muted-foreground);">No sessions yet</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = sessions.map(s => `
+                <tr>
+                    <td><span class="badge">${s.session_id.substring(0, 8)}</span></td>
+                    <td>${new Date(s.timestamp).toLocaleString()}</td>
+                    <td>${s.total_input_tokens.toLocaleString()}</td>
+                    <td>${s.total_output_tokens.toLocaleString()}</td>
+                    <td>$${s.total_cost.toFixed(4)}</td>
+                    <td>${s.model || 'N/A'}</td>
+                </tr>
+            `).join('');
+        }
+
+        function updateLastUpdate() {
+            const now = new Date();
+            document.getElementById('lastUpdate').textContent = 
+                `Updated: ${now.toLocaleTimeString()}`;
+        }
+
+        async function refreshData() {
+            if (isRefreshing) return;
+            
+            isRefreshing = true;
+            const btn = document.getElementById('refreshBtn');
+            btn.disabled = true;
+            btn.textContent = '⏳ Refreshing...';
+
+            try {
+                await fetch('/api/refresh');
+                await loadData();
+            } catch (error) {
+                console.error('Error refreshing:', error);
+            } finally {
+                isRefreshing = false;
+                btn.disabled = false;
+                btn.textContent = '🔄 Refresh';
+            }
+        }
+    </script>
+</body>
+</html>

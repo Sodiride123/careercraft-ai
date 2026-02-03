@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Neo-Professional Futurist Theme - Light Mode */
+    --primary: 330 80% 60%; /* Magenta */
+    --primary-foreground: 0 0% 98%;
+    --sidebar-primary: 300 80% 50%; /* Deep Purple */
+    --sidebar-primary-foreground: 0 0% 98%;
+    --background: 0 0% 99%;
+    --foreground: 300 10% 20%;
+    --card: 0 0% 100%;
+    --card-foreground: 300 10% 20%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 300 10% 20%;
+    --secondary: 300 5% 96%;
+    --secondary-foreground: 300 50% 40%;
+    --muted: 300 2.5% 97%;
+    --muted-foreground: 300 25% 50%;
+    --accent: 330 10% 95%;
+    --accent-foreground: 330 75% 40%;
+    --destructive: 20 80% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 300 10% 90%;
+    --input: 300 10% 90%;
+    --ring: 330 80% 60%;
+    --sidebar: 300 5% 98%;
+    --sidebar-foreground: 300 25% 30%;
+    --sidebar-accent: 330 10% 95%;
+    --sidebar-accent-foreground: 330 75% 40%;
+    --sidebar-border: 300 10% 90%;
+    --sidebar-ring: 330 80% 60%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    /* Dark Mode */
+    --primary: 330 80% 60%;
+    --primary-foreground: 0 0% 98%;
+    --sidebar-primary: 330 80% 60%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --background: 300 10% 15%;
+    --foreground: 300 5% 95%;
+    --card: 300 15% 18%;
+    --card-foreground: 300 5% 95%;
+    --popover: 300 15% 18%;
+    --popover-foreground: 300 5% 95%;
+    --secondary: 300 25% 25%;
+    --secondary-foreground: 300 25% 90%;
+    --muted: 300 15% 25%;
+    --muted-foreground: 300 25% 70%;
+    --accent: 330 50% 30%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 20 80% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 300 25% 30%;
+    --input: 300 25% 30%;
+    --ring: 330 80% 60%;
+    --sidebar: 300 10% 12%;
+    --sidebar-foreground: 300 5% 90%;
+    --sidebar-accent: 330 25% 25%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 300 25% 25%;
+    --sidebar-ring: 330 80% 60%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+      'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+      sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [type="button"]:not(:disabled),
+  [type="submit"]:not(:disabled),
+  [type="reset"]:not(:disabled),
+  a[href],
+  select:not(:disabled),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled) {
+    @apply cursor-pointer;
+  }
+}
+
+@layer utilities {
+  .animate-in {
+    animation: fadeIn 0.5s ease-in;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}

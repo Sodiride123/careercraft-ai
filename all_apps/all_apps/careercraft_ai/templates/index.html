@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sarah Chen - AI Career Consultant</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://sites.super.myninja.ai/_assets/ninja-daytona-script.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <span class="logo-icon">✨</span>
+                    <span class="logo-text">CareerCraft AI</span>
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active">
+                    <span class="nav-icon">💬</span>
+                    <span class="nav-text">Chat with Sarah</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="nav-icon">📄</span>
+                    <span class="nav-text">My Resumes</span>
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="nav-icon">💼</span>
+                    <span class="nav-text">Job Matches</span>
+                </a>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <a href="https://9010-36108856-1b94-4574-8eaa-b37652db986a.app.super.myninja.ai/?password=979b83c9-58aa-4446-9f05-0f5d83901b0b" target="_blank" class="nav-item">
+                    <span class="nav-icon">📊</span>
+                    <span class="nav-text">Token Usage</span>
+                </a>
+                <a href="/api/health" target="_blank" class="nav-item">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-text">System Status</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Agent Header -->
+            <header class="agent-header">
+                <div class="agent-profile">
+                    <div class="agent-avatar">
+                        <img src="/static/sarah-avatar.png" alt="Sarah Chen">
+                        <span class="status-indicator online"></span>
+                    </div>
+                    <div class="agent-info">
+                        <h1 class="agent-name">Sarah Chen</h1>
+                        <p class="agent-title">Senior AI Career Consultant</p>
+                        <div class="agent-badges">
+                            <span class="badge">🎯 Resume Expert</span>
+                            <span class="badge">💼 10+ Years HR</span>
+                            <span class="badge">🤖 AI-Powered</span>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Chat Container -->
+            <div class="chat-container" id="chatContainer">
+                <!-- Welcome Message -->
+                <div class="message agent-message">
+                    <div class="message-avatar">
+                        <img src="/static/sarah-avatar.png" alt="Sarah">
+                    </div>
+                    <div class="message-content">
+                        <div class="message-header">
+                            <span class="message-name">Sarah Chen</span>
+                            <span class="message-time">Just now</span>
+                        </div>
+                        <div class="message-bubble">
+                            <p>Hi there! 👋 I'm <strong>Sarah Chen</strong>, your AI Career Consultant.</p>
+                            <p>I specialize in creating <strong>tailored resumes</strong> and <strong>compelling cover letters</strong> that get you noticed by recruiters and pass ATS systems.</p>
+                            <p>To get started, I'll need two things from you:</p>
+                            <ol>
+                                <li>Your <strong>LinkedIn profile URL</strong></li>
+                                <li>The <strong>job you're applying for</strong> (either a URL or description)</li>
+                            </ol>
+                            <p>Ready to craft your perfect application? Let's begin! 🚀</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dynamic messages will be added here -->
+                <div id="dynamicMessages"></div>
+            </div>
+
+            <!-- Input Area -->
+            <div class="input-area" id="inputArea">
+                <!-- Step 1: LinkedIn URL -->
+                <div class="input-step active" id="step1">
+                    <div class="step-indicator">
+                        <span class="step-number">1</span>
+                        <span class="step-label">Share your LinkedIn profile</span>
+                    </div>
+                    <div class="input-group">
+                        <span class="input-icon">👤</span>
+                        <input 
+                            type="url" 
+                            id="linkedinUrl" 
+                            placeholder="https://www.linkedin.com/in/your-profile/"
+                            class="chat-input"
+                        >
+                        <button class="send-btn" id="submitLinkedin">
+                            Continue →
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Step 2: Job Input -->
+                <div class="input-step hidden" id="step2">
+                    <div class="step-indicator">
+                        <span class="step-number">2</span>
+                        <span class="step-label">Tell me about the job</span>
+                    </div>
+                    <div class="input-toggle-container">
+                        <button class="toggle-pill active" data-mode="url" id="jobUrlMode">📎 Job URL</button>
+                        <button class="toggle-pill" data-mode="text" id="jobTextMode">📝 Paste Description</button>
+                    </div>
+                    <div class="input-group" id="jobUrlGroup">
+                        <span class="input-icon">💼</span>
+                        <input 
+                            type="url" 
+                            id="jobAdUrl" 
+                            placeholder="https://www.linkedin.com/jobs/view/..."
+                            class="chat-input"
+                        >
+                        <button class="send-btn" id="submitJobUrl">
+                            Generate ✨
+                        </button>
+                    </div>
+                    <div class="input-group hidden" id="jobTextGroup">
+                        <span class="input-icon">📝</span>
+                        <textarea 
+                            id="jobAdText" 
+                            placeholder="Paste the job description here..."
+                            class="chat-input chat-textarea"
+                            rows="3"
+                        ></textarea>
+                        <button class="send-btn" id="submitJobText">
+                            Generate ✨
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Progress State -->
+                <div class="input-step hidden" id="progressStep">
+                    <div class="progress-container">
+                        <div class="progress-header">
+                            <div class="typing-indicator">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                            </div>
+                            <span class="progress-status" id="progressStatus">Sarah is working on your resume...</span>
+                        </div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="progressFill"></div>
+                            </div>
+                            <span class="progress-percent" id="progressPercent">0%</span>
+                        </div>
+                        <div class="progress-steps" id="progressSteps">
+                            <!-- Progress steps will be added dynamically -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Result State -->
+                <div class="input-step hidden" id="resultStep">
+                    <div class="result-actions">
+                        <button class="action-btn primary" id="downloadBtn">
+                            📄 Download Resume
+                        </button>
+                        <button class="action-btn primary cover-letter-btn hidden" id="downloadCoverLetterBtn">
+                            ✉️ Download Cover Letter
+                        </button>
+                        <button class="action-btn secondary" id="newResumeBtn">
+                            🔄 Create Another
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
