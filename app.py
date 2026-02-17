@@ -120,6 +120,38 @@ def run_claude_command(prompt: str, timeout: int = 180) -> str:
         return f"Error: {str(e)}"
 
 
+def fetch_linkedin_profile_via_mcp(profile_url: str) -> dict:
+    """Fetch LinkedIn profile using MCP client"""
+    try:
+        from linkedin_client import LinkedInClient
+        
+        logger.info(f"Fetching LinkedIn profile via MCP: {profile_url}")
+        
+        # Initialize LinkedIn client (auto-loads from .env)
+        linkedin = LinkedInClient()
+        
+        # Get profile with all details
+        profile_data = linkedin.profile.get_profile(
+            profile_url=profile_url,
+            include_skills=True,
+            include_certifications=True,
+            include_projects=True,
+            include_company_public_url=True,
+            include_profile_status=False
+        )
+        
+        # Parse the response if it's a string
+        if isinstance(profile_data, str):
+            profile_data = json.loads(profile_data)
+        
+        logger.info("LinkedIn profile fetched successfully via MCP")
+        return profile_data
+        
+    except Exception as e:
+        logger.error(f"Failed to fetch LinkedIn profile via MCP: {str(e)}")
+        raise
+
+
 def generate_resume_with_claude(job: ResumeGeneratorJob):
     """Generate resume and cover letter using Claude Code with MCP tools"""
     try:
@@ -128,14 +160,24 @@ def generate_resume_with_claude(job: ResumeGeneratorJob):
         job.current_step = "Starting Ninja AI Agent..."
         job.add_log("Initializing Ninja AI Agent for resume generation")
         
-        output_dir = "/workspace/output"
+        output_dir = os.path.join(os.path.dirname(__file__), "output")
         
         # Step 1: Fetch LinkedIn Profile
         job.progress = 10
         job.current_step = "Fetching LinkedIn profile..."
         job.add_log(f"Fetching profile: {job.linkedin_url}")
         
-        profile_prompt = f'''Use the Get_Profile_Details MCP tool to fetch the LinkedIn profile for {job.linkedin_url} with include_skills=true, include_certifications=true, include_projects=true.
+        try:
+            # Try to fetch via MCP client first
+            profile_data = fetch_linkedin_profile_via_mcp(job.linkedin_url)
+            profile_result = json.dumps(profile_data, indent=2)
+            job.add_log("LinkedIn profile fetched successfully via MCP", "success")
+        except Exception as mcp_error:
+            # Fallback to Claude Code if MCP fails
+            logger.warning(f"MCP fetch failed, falling back to Claude Code: {str(mcp_error)}")
+            job.add_log(f"MCP fetch failed, using fallback method", "warning")
+            
+            profile_prompt = f'''Use the Get_Profile_Details MCP tool to fetch the LinkedIn profile for {job.linkedin_url} with include_skills=true, include_certifications=true, include_projects=true.
 
 Return the data as a valid JSON object with this structure:
 {{
@@ -151,8 +193,8 @@ Return the data as a valid JSON object with this structure:
 
 Only output the JSON, nothing else.'''
 
-        profile_result = run_claude_command(profile_prompt, timeout=300)
-        job.add_log("LinkedIn profile fetched successfully", "success")
+            profile_result = run_claude_command(profile_prompt, timeout=300)
+            job.add_log("LinkedIn profile fetched successfully", "success")
         
         # Save profile data
         profile_path = os.path.join(output_dir, f"{job.job_id}_profile.json")
@@ -500,13 +542,20 @@ def get_status(job_id):
 def download_pdf(job_id):
     """Download the generated Resume PDF"""
     job = jobs.get(job_id)
-    if not job:
-        return jsonify({"error": "Job not found"}), 404
     
-    if job.status != "completed" or not job.pdf_path:
-        return jsonify({"error": "PDF not ready"}), 400
+    # Use the directory where app.py is located as base
+    base_dir = os.path.dirname(__file__)
     
-    pdf_full_path = os.path.join('/workspace', job.pdf_path)
+    # If job exists in memory, use its pdf_path
+    if job and job.pdf_path:
+        pdf_full_path = os.path.join(base_dir, job.pdf_path)
+    else:
+        # If job not in memory (after restart), try to find the file directly
+        pdf_full_path = os.path.join(base_dir, "output", f"{job_id}_resume.pdf")
+        if not os.path.exists(pdf_full_path):
+            # Try HTML version
+            pdf_full_path = os.path.join(base_dir, "output", f"{job_id}_resume.html")
+    
     if not os.path.exists(pdf_full_path):
         return jsonify({"error": "PDF file not found"}), 404
     
@@ -530,13 +579,20 @@ def download_pdf(job_id):
 def download_cover_letter(job_id):
     """Download the generated Cover Letter PDF"""
     job = jobs.get(job_id)
-    if not job:
-        return jsonify({"error": "Job not found"}), 404
     
-    if job.status != "completed" or not job.cover_letter_path:
-        return jsonify({"error": "Cover letter not ready"}), 400
+    # Use the directory where app.py is located as base
+    base_dir = os.path.dirname(__file__)
     
-    cl_full_path = os.path.join('/workspace', job.cover_letter_path)
+    # If job exists in memory, use its cover_letter_path
+    if job and job.cover_letter_path:
+        cl_full_path = os.path.join(base_dir, job.cover_letter_path)
+    else:
+        # If job not in memory (after restart), try to find the file directly
+        cl_full_path = os.path.join(base_dir, "output", f"{job_id}_cover_letter.pdf")
+        if not os.path.exists(cl_full_path):
+            # Try HTML version
+            cl_full_path = os.path.join(base_dir, "output", f"{job_id}_cover_letter.html")
+    
     if not os.path.exists(cl_full_path):
         return jsonify({"error": "Cover letter file not found"}), 404
     
@@ -596,5 +652,5 @@ def get_resumes():
 
 
 if __name__ == '__main__':
-    logger.info("Starting LinkedIn Resume & Cover Letter Generator App on port 9000")
-    app.run(host='0.0.0.0', port=9000, debug=False, threaded=True)
+    logger.info("Starting LinkedIn Resume & Cover Letter Generator App on port 8888")
+    app.run(host='0.0.0.0', port=8888, debug=False, threaded=True)
