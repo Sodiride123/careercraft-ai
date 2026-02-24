@@ -1,20 +1,21 @@
 #!/bin/bash
 # CareerCraft AI - Startup Script
-# Ensures proper environment variables are set for Claude Code
 
-# Set HOME environment variable (required for Claude Code)
+set -e
+
 export HOME=/root
 export PATH="/usr/local/bin:$PATH"
 
-# Change to app directory
-cd /workspace
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Create logs directory if it doesn't exist
-mkdir -p logs output
+mkdir -p "$SCRIPT_DIR/logs" "$SCRIPT_DIR/output"
 
-# Start the Flask application
-echo "Starting CareerCraft AI on port 9000..."
-echo "HOME=$HOME"
-echo "PATH=$PATH"
+echo "==> Starting Flask backend on port 8888..."
+cd "$SCRIPT_DIR" && python app.py > logs/app.log 2>&1 &
 
-exec python app.py
+echo "==> Starting React frontend on port 5173..."
+cd "$SCRIPT_DIR/client" && npm run dev > "$SCRIPT_DIR/logs/frontend.log" 2>&1 &
+
+echo "==> CareerCraft AI is running."
+echo "    Frontend: http://localhost:5173"
+echo "    Backend:  http://localhost:8888"
