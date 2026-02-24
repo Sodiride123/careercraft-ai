@@ -1,5 +1,6 @@
 #!/bin/bash
 # CareerCraft AI - Startup Script
+# Serves the app on port 8888 (Flask serves built frontend)
 
 set -e
 
@@ -18,12 +19,16 @@ if [ -f "$SCRIPT_DIR/.env" ]; then
     set +a
 fi
 
-echo "==> Starting Flask backend on port 8888..."
+# Check if frontend is built
+if [ ! -d "$SCRIPT_DIR/client/dist" ]; then
+    echo "==> Frontend not built. Building now..."
+    cd "$SCRIPT_DIR/client" && npm run build
+fi
+
+echo "==> Starting CareerCraft AI on port 8888..."
 cd "$SCRIPT_DIR" && python app.py > logs/app.log 2>&1 &
 
-echo "==> Starting React frontend on port 5173..."
-cd "$SCRIPT_DIR/client" && npm run dev > "$SCRIPT_DIR/logs/frontend.log" 2>&1 &
-
 echo "==> CareerCraft AI is running."
-echo "    Frontend: http://localhost:5173"
-echo "    Backend:  http://localhost:8888"
+echo "    App: http://localhost:8888"
+echo ""
+echo "    Logs: $SCRIPT_DIR/logs/app.log"

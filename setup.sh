@@ -12,6 +12,9 @@ pip install -r "$SCRIPT_DIR/requirements.txt" -q
 echo "==> Installing frontend Node dependencies..."
 cd "$SCRIPT_DIR/client" && npm install
 
+echo "==> Building frontend for production..."
+cd "$SCRIPT_DIR/client" && npm run build
+
 echo "==> Creating required runtime directories..."
 mkdir -p "$SCRIPT_DIR/logs" "$SCRIPT_DIR/output"
 

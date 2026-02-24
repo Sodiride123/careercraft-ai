@@ -486,32 +486,49 @@ Output ONLY the complete HTML code starting with <!DOCTYPE html> and ending with
 
 @app.route('/')
 def index():
-    """Serve the main page"""
-    return render_template('index.html')
+    """Serve the main page from Vite build"""
+    from flask import send_from_directory
+    return send_from_directory('client/dist', 'index.html')
 
 @app.route('/assets/<path:filename>')
 def serve_assets(filename):
-    """Serve static assets from the assets folder"""
+    """Serve static assets from Vite build"""
     from flask import send_from_directory
-    return send_from_directory('static/assets', filename)
+    return send_from_directory('client/dist/assets', filename)
 
 @app.route('/aria-avatar.png')
 def serve_avatar():
     """Serve the Aria avatar image"""
     from flask import send_from_directory
-    return send_from_directory('static', 'aria-avatar.png')
+    # Try Vite build first, fallback to static
+    try:
+        return send_from_directory('client/dist', 'aria-avatar.png')
+    except:
+        return send_from_directory('static', 'aria-avatar.png')
 
 @app.route('/vite.svg')
 def serve_vite_svg():
     """Serve the Vite SVG"""
     from flask import send_from_directory
-    return send_from_directory('static', 'vite.svg')
+    return send_from_directory('client/dist', 'vite.svg')
 
 @app.route('/output/<path:filename>')
 def serve_output(filename):
     """Serve generated resume/cover letter files"""
     from flask import send_from_directory
     return send_from_directory('output', filename)
+
+# Catch-all route for client-side routing (React Router)
+@app.route('/<path:path>')
+def serve_spa(path):
+    """Serve SPA - return index.html for client-side routes"""
+    from flask import send_from_directory
+    import os
+    # If file exists in dist, serve it
+    if os.path.exists(os.path.join('client/dist', path)):
+        return send_from_directory('client/dist', path)
+    # Otherwise return index.html for client-side routing
+    return send_from_directory('client/dist', 'index.html')
 
 
 @app.route('/api/generate', methods=['POST'])
