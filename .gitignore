@@ -81,3 +81,4 @@ summarized_conversations/
 
 # Agent hooks
 .agent_hooks/
+settings.json

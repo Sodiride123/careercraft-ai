@@ -12,9 +12,16 @@ import threading
 import time
 import logging
 import re
+from pathlib import Path
 from datetime import datetime
+from dotenv import load_dotenv
 from flask import Flask, request, jsonify, render_template, send_file
 from flask_cors import CORS
+from weasyprint import HTML, CSS
+
+# Load .env file from the same directory as this script
+_env_path = Path(__file__).resolve().parent / ".env"
+load_dotenv(_env_path, override=True)
 
 # Configure logging
 os.makedirs('logs', exist_ok=True)
@@ -83,24 +90,39 @@ class ResumeGeneratorJob:
 def run_claude_command(prompt: str, timeout: int = 180) -> str:
     """Run a Claude Code command and return the output using wrapper script"""
     try:
-        # Use the wrapper script which sets HOME and PATH
-        wrapper_path = '/usr/local/bin/claude'
-        
+        import shutil
+
+        # Find claude CLI - check common locations
+        wrapper_path = shutil.which('claude')
+        if not wrapper_path:
+            # Fallback paths for sandbox and common installations
+            for path in ['/usr/local/bin/claude', os.path.expanduser('~/.local/bin/claude')]:
+                if os.path.exists(path):
+                    wrapper_path = path
+                    break
+
+        if not wrapper_path:
+            raise RuntimeError("Claude CLI not found. Please install it or add it to PATH.")
+
         # Set environment explicitly
         env = os.environ.copy()
-        env['HOME'] = '/root'
-        env['USER'] = 'root'
-        env['PATH'] = '/usr/local/bin:' + env.get('PATH', '')
-        
-        logger.info(f"Running Claude command with timeout={timeout}s")
-        
+        env['HOME'] = os.environ.get('HOME', '/root')
+        env['USER'] = os.environ.get('USER', 'root')
+        env['PATH'] = '/usr/local/bin:' + os.path.expanduser('~/.local/bin:') + env.get('PATH', '')
+
+        # Use project directory as working directory
+        project_dir = os.path.dirname(os.path.abspath(__file__))
+        work_dir = os.environ.get('WORKSPACE', project_dir)
+
+        logger.info(f"Running Claude command with timeout={timeout}s (claude: {wrapper_path})")
+
         # Use wrapper script with pseudo-TTY
         result = subprocess.run(
             [wrapper_path, '-p', prompt],
             capture_output=True,
             text=True,
             timeout=timeout,
-            cwd='/workspace',
+            cwd=work_dir,
             env=env
         )
         
@@ -404,20 +426,18 @@ Output ONLY the complete HTML code starting with <!DOCTYPE html> and ending with
         job.add_log("Converting resume HTML to PDF...")
         
         pdf_path = os.path.join(output_dir, f"{job.job_id}_resume.pdf")
-        
-        # Use wkhtmltopdf for conversion
-        pdf_result = subprocess.run(
-            ['wkhtmltopdf', '--enable-local-file-access', '--page-size', 'A4',
-             '--margin-top', '10mm', '--margin-bottom', '10mm',
-             '--margin-left', '10mm', '--margin-right', '10mm',
-             '--encoding', 'UTF-8',
-             html_path, pdf_path],
-            capture_output=True,
-            text=True,
-            timeout=60
-        )
-        
-        resume_pdf_success = os.path.exists(pdf_path) and os.path.getsize(pdf_path) > 0
+
+        # Use WeasyPrint for conversion
+        try:
+            html_doc = HTML(filename=html_path)
+            html_doc.write_pdf(
+                pdf_path,
+                stylesheets=[CSS(string='@page { size: A4; margin: 10mm; }')]
+            )
+            resume_pdf_success = os.path.exists(pdf_path) and os.path.getsize(pdf_path) > 0
+        except Exception as e:
+            logger.error(f"WeasyPrint error for resume: {e}")
+            resume_pdf_success = False
         if resume_pdf_success:
             job.pdf_path = f"output/{job.job_id}_resume.pdf"
             job.add_log("Resume PDF created successfully!", "success")
@@ -431,19 +451,18 @@ Output ONLY the complete HTML code starting with <!DOCTYPE html> and ending with
         job.add_log("Converting cover letter HTML to PDF...")
         
         cl_pdf_path = os.path.join(output_dir, f"{job.job_id}_cover_letter.pdf")
-        
-        cl_pdf_result = subprocess.run(
-            ['wkhtmltopdf', '--enable-local-file-access', '--page-size', 'A4',
-             '--margin-top', '15mm', '--margin-bottom', '15mm',
-             '--margin-left', '20mm', '--margin-right', '20mm',
-             '--encoding', 'UTF-8',
-             cl_html_path, cl_pdf_path],
-            capture_output=True,
-            text=True,
-            timeout=60
-        )
-        
-        cover_letter_pdf_success = os.path.exists(cl_pdf_path) and os.path.getsize(cl_pdf_path) > 0
+
+        # Use WeasyPrint for conversion
+        try:
+            cl_html_doc = HTML(filename=cl_html_path)
+            cl_html_doc.write_pdf(
+                cl_pdf_path,
+                stylesheets=[CSS(string='@page { size: A4; margin: 15mm 20mm; }')]
+            )
+            cover_letter_pdf_success = os.path.exists(cl_pdf_path) and os.path.getsize(cl_pdf_path) > 0
+        except Exception as e:
+            logger.error(f"WeasyPrint error for cover letter: {e}")
+            cover_letter_pdf_success = False
         if cover_letter_pdf_success:
             job.cover_letter_path = f"output/{job.job_id}_cover_letter.pdf"
             job.add_log("Cover letter PDF created successfully!", "success")

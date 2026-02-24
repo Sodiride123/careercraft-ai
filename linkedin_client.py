@@ -10,9 +10,9 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from dotenv import load_dotenv
 
-# Load .env from the same directory as this file
+# Load .env from the same directory as this file (override=True to take precedence over system env)
 _env_path = Path(__file__).resolve().parent / ".env"
-load_dotenv(_env_path)
+load_dotenv(_env_path, override=True)
 
 
 @dataclass

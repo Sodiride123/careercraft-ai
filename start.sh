@@ -10,6 +10,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 mkdir -p "$SCRIPT_DIR/logs" "$SCRIPT_DIR/output"
 
+# Load environment variables from .env if it exists
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    echo "==> Loading environment from .env..."
+    set -a
+    source "$SCRIPT_DIR/.env"
+    set +a
+fi
+
 echo "==> Starting Flask backend on port 8888..."
 cd "$SCRIPT_DIR" && python app.py > logs/app.log 2>&1 &
 

@@ -2,7 +2,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { FileText, LayoutDashboard, MessageSquare, Settings, Zap } from "lucide-react";
+import { FileText, LayoutDashboard, MessageSquare, Settings } from "lucide-react";
 import { Link, useLocation } from "wouter";
 
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {}
@@ -66,12 +66,6 @@ export function Sidebar({ className }: SidebarProps) {
             System
           </h3>
           <div className="space-y-1">
-            <a href="https://000m6.app.super.betamyninja.ai" target="_blank" rel="noopener noreferrer">
-              <Button variant="ghost" className="w-full justify-start">
-                <Zap className="mr-2 h-4 w-4 text-yellow-500" />
-                Token Usage
-              </Button>
-            </a>
             <Link href="/settings">
               <Button 
                 variant={isActive("/settings") ? "secondary" : "ghost"} 

@@ -1,4 +1,3 @@
-
 #!/bin/bash
 # CareerCraft AI - Dependency Setup Script
 # Run this once before starting the app
