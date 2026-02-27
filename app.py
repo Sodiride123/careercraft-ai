@@ -89,8 +89,15 @@ class ResumeGeneratorJob:
         }
 
 
-def run_claude_command(prompt: str, timeout: int = 180) -> str:
-    """Run a Claude Code command and return the output using wrapper script"""
+def run_claude_command(prompt: str, timeout: int = 180, use_tools: bool = True) -> str:
+    """Run a Claude Code command and return the output using wrapper script.
+
+    Args:
+        prompt: The prompt to send to Claude.
+        timeout: Command timeout in seconds.
+        use_tools: If False, disables all tools so Claude outputs text directly
+                   to stdout instead of writing files to disk.
+    """
     try:
         import shutil
 
@@ -118,9 +125,13 @@ def run_claude_command(prompt: str, timeout: int = 180) -> str:
 
         logger.info(f"Running Claude command with timeout={timeout}s (claude: {wrapper_path})")
 
-        # Use wrapper script with pseudo-TTY
+        # Build command - disable tools when we only need text output
+        cmd = [wrapper_path, '-p', prompt]
+        if not use_tools:
+            cmd.extend(['--tools', ''])
+
         result = subprocess.run(
-            [wrapper_path, '-p', prompt],
+            cmd,
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -302,7 +313,7 @@ Return the data as a valid JSON object with this structure:
 
 Extract as much detail as possible from the text. Only output the JSON, nothing else.'''
 
-            profile_result = run_claude_command(structure_prompt, timeout=300)
+            profile_result = run_claude_command(structure_prompt, timeout=300, use_tools=False)
             job.add_log("Profile text structured successfully", "success")
         else:
             # LinkedIn URL — use MCP
@@ -396,7 +407,7 @@ Return the data as a valid JSON object with this structure:
 }}
 
 Only output the JSON, nothing else.'''
-                job_result = run_claude_command(job_prompt, timeout=300)
+                job_result = run_claude_command(job_prompt, timeout=300, use_tools=False)
                 job.add_log("Job details analyzed via fallback", "success")
 
         elif input_type == 'external_url':
@@ -457,7 +468,7 @@ Return the data as a valid JSON object with this structure:
 }}
 
 Extract as much detail as possible from the page content. Only output the JSON, nothing else.'''
-            job_result = run_claude_command(job_prompt, timeout=300)
+            job_result = run_claude_command(job_prompt, timeout=300, use_tools=False)
             job.add_log("External job URL analyzed", "success")
 
         elif input_type == 'text':
@@ -480,7 +491,7 @@ Return the data as a valid JSON object with this structure:
 
 Extract the job title, company name, location, required skills, and key requirements from the description.
 Only output the JSON, nothing else.'''
-            job_result = run_claude_command(job_prompt, timeout=300)
+            job_result = run_claude_command(job_prompt, timeout=300, use_tools=False)
             job.add_log("Job description analyzed successfully", "success")
 
         else:
@@ -500,7 +511,7 @@ Based on this job title, create a reasonable job description. Return the data as
 
 For company_name, use what's provided or "Not specified". For other fields, make reasonable inferences based on the job title. Include common skills and requirements for this type of role.
 Only output the JSON, nothing else.'''
-            job_result = run_claude_command(job_prompt, timeout=300)
+            job_result = run_claude_command(job_prompt, timeout=300, use_tools=False)
             job.add_log("Job title analyzed successfully", "success")
         
         # Log the raw job result for debugging
@@ -564,7 +575,7 @@ Create a complete HTML resume that:
 
 Output ONLY the complete HTML code starting with <!DOCTYPE html> and ending with </html>. No explanations, no questions, no markdown - just the HTML.'''
 
-        html_result = run_claude_command(resume_prompt, timeout=300)
+        html_result = run_claude_command(resume_prompt, timeout=300, use_tools=False)
         job.add_log("Resume HTML generated", "success")
         
         # Extract HTML from response (in case there's extra text)
@@ -623,7 +634,7 @@ Use professional HTML styling with inline CSS.
 
 Output ONLY the complete HTML code starting with <!DOCTYPE html> and ending with </html>. No explanations, no questions, no markdown - just the HTML.'''
 
-        cover_letter_result = run_claude_command(cover_letter_prompt, timeout=300)
+        cover_letter_result = run_claude_command(cover_letter_prompt, timeout=300, use_tools=False)
         job.add_log("Cover letter generated", "success")
         
         # Extract HTML from response
