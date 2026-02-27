@@ -20,8 +20,16 @@ export const getApiBaseUrl = (): string => {
 const API_BASE_URL = getApiBaseUrl();
 
 interface GenerateResumeRequest {
-  linkedin_url: string;
+  linkedin_url?: string;
+  profile_text?: string;
   job_input: string;
+}
+
+interface UploadResponse {
+  success: boolean;
+  text: string;
+  filename: string;
+  characters: number;
 }
 
 interface GenerateResumeResponse {
@@ -101,6 +109,25 @@ class ApiClient {
 
   async getResumes(): Promise<ResumesResponse> {
     return this.request("/api/resumes");
+  }
+
+  async uploadFile(file: File): Promise<UploadResponse> {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const url = `${this.baseUrl}/api/upload`;
+    const response = await fetch(url, {
+      method: "POST",
+      body: formData,
+      // Note: do NOT set Content-Type header — browser sets it with boundary
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Upload failed: ${response.status}`);
+    }
+
+    return response.json();
   }
 
   getDownloadUrl(jobId: string): string {

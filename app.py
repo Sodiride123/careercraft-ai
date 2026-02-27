@@ -38,6 +38,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB upload limit
 CORS(app)
 
 # Store job status
@@ -50,6 +51,7 @@ class ResumeGeneratorJob:
         self.job_id = job_id
         self.linkedin_url = linkedin_url
         self.job_ad_url = job_ad_url
+        self.profile_text = None  # Alternative to linkedin_url
         self.status = "pending"
         self.progress = 0
         self.current_step = "Initializing..."
@@ -272,22 +274,50 @@ def generate_resume_with_claude(job: ResumeGeneratorJob):
         
         output_dir = os.path.join(os.path.dirname(__file__), "output")
         
-        # Step 1: Fetch LinkedIn Profile
+        # Step 1: Get Profile Data (LinkedIn MCP or provided text)
         job.progress = 10
-        job.current_step = "Fetching LinkedIn profile..."
-        job.add_log(f"Fetching profile: {job.linkedin_url}")
-        
-        try:
-            # Try to fetch via MCP client first
-            profile_data = fetch_linkedin_profile_via_mcp(job.linkedin_url)
-            profile_result = json.dumps(profile_data, indent=2)
-            job.add_log("LinkedIn profile fetched successfully via MCP", "success")
-        except Exception as mcp_error:
-            # Fallback to Claude Code if MCP fails
-            logger.warning(f"MCP fetch failed, falling back to Claude Code: {str(mcp_error)}")
-            job.add_log(f"MCP fetch failed, using fallback method", "warning")
+        profile_text = getattr(job, 'profile_text', None)
 
-            profile_prompt = f'''Visit this LinkedIn profile URL and extract the person's professional information: {job.linkedin_url}
+        if profile_text:
+            # Profile provided as text (file upload or typed) — structure it with Claude
+            job.current_step = "Processing your profile..."
+            job.add_log("Structuring provided profile text with AI")
+
+            structure_prompt = f'''Analyze the following professional profile/resume text and extract the person's information.
+
+PROFILE TEXT:
+{profile_text}
+
+Return the data as a valid JSON object with this structure:
+{{
+    "full_name": "...",
+    "headline": "...",
+    "summary": "...",
+    "location": "...",
+    "experiences": [{{"title": "...", "company": "...", "duration": "...", "description": "..."}}],
+    "education": [{{"school": "...", "degree": "...", "field": "...", "dates": "..."}}],
+    "skills": ["skill1", "skill2"],
+    "certifications": [{{"name": "...", "authority": "..."}}]
+}}
+
+Extract as much detail as possible from the text. Only output the JSON, nothing else.'''
+
+            profile_result = run_claude_command(structure_prompt, timeout=300)
+            job.add_log("Profile text structured successfully", "success")
+        else:
+            # LinkedIn URL — use MCP
+            job.current_step = "Fetching LinkedIn profile..."
+            job.add_log(f"Fetching profile: {job.linkedin_url}")
+
+            try:
+                profile_data = fetch_linkedin_profile_via_mcp(job.linkedin_url)
+                profile_result = json.dumps(profile_data, indent=2)
+                job.add_log("LinkedIn profile fetched successfully via MCP", "success")
+            except Exception as mcp_error:
+                logger.warning(f"MCP fetch failed, falling back to Claude Code: {str(mcp_error)}")
+                job.add_log(f"MCP fetch failed, using fallback method", "warning")
+
+                profile_prompt = f'''Visit this LinkedIn profile URL and extract the person's professional information: {job.linkedin_url}
 
 Return the data as a valid JSON object with this structure:
 {{
@@ -303,8 +333,8 @@ Return the data as a valid JSON object with this structure:
 
 Extract as much detail as possible. Only output the JSON, nothing else.'''
 
-            profile_result = run_claude_command(profile_prompt, timeout=300)
-            job.add_log("LinkedIn profile fetched via fallback", "success")
+                profile_result = run_claude_command(profile_prompt, timeout=300)
+                job.add_log("LinkedIn profile fetched via fallback", "success")
         
         # Save profile data
         profile_path = os.path.join(output_dir, f"{job.job_id}_profile.json")
@@ -724,11 +754,42 @@ def serve_spa(path):
     return send_from_directory('client/dist', 'index.html')
 
 
+@app.route('/api/upload', methods=['POST'])
+def upload_file():
+    """Upload and parse a file (PDF, DOCX, TXT) to extract text content"""
+    from file_parser import parse_uploaded_file, allowed_file
+
+    if 'file' not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+
+    file = request.files['file']
+    if not file.filename:
+        return jsonify({"error": "No file selected"}), 400
+
+    if not allowed_file(file.filename):
+        return jsonify({"error": "Unsupported file type. Please upload a PDF, DOCX, or TXT file."}), 400
+
+    try:
+        text = parse_uploaded_file(file)
+        return jsonify({
+            "success": True,
+            "text": text,
+            "filename": file.filename,
+            "characters": len(text)
+        })
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logger.error(f"File upload error: {str(e)}")
+        return jsonify({"error": "Failed to process the uploaded file."}), 500
+
+
 @app.route('/api/generate', methods=['POST'])
 def generate_resume():
     """Start a new resume generation job"""
     data = request.json
     linkedin_url = data.get('linkedin_url', '').strip()
+    profile_text = data.get('profile_text', '').strip()
 
     # Support new single job_input field, with backward compatibility
     job_input = data.get('job_input', '').strip()
@@ -738,24 +799,27 @@ def generate_resume():
         job_ad_text = data.get('job_ad_text', '').strip()
         job_input = job_ad_url or job_ad_text
 
-    # Validate inputs
-    if not linkedin_url:
-        return jsonify({"error": "LinkedIn URL is required"}), 400
+    # Validate inputs - must have either linkedin_url or profile_text
+    if not linkedin_url and not profile_text:
+        return jsonify({"error": "Please provide a LinkedIn URL or profile information"}), 400
+
+    if linkedin_url and 'linkedin.com' not in linkedin_url.lower():
+        return jsonify({"error": "Please provide a valid LinkedIn profile URL"}), 400
 
     if not job_input:
         return jsonify({"error": "Job information is required (URL, description, or title)"}), 400
 
-    if 'linkedin.com' not in linkedin_url.lower():
-        return jsonify({"error": "Please provide a valid LinkedIn profile URL"}), 400
-
     # Create new job
     job_id = str(uuid.uuid4())[:8]
-    job = ResumeGeneratorJob(job_id, linkedin_url, None)
+    job = ResumeGeneratorJob(job_id, linkedin_url or None, None)
     job.job_input = job_input
+    if profile_text:
+        job.profile_text = profile_text
     jobs[job_id] = job
 
     input_type = detect_job_input_type(job_input)
-    logger.info(f"Created new job {job_id} for LinkedIn: {linkedin_url}, Job input type: {input_type}")
+    profile_source = "profile_text" if profile_text else f"LinkedIn: {linkedin_url}"
+    logger.info(f"Created new job {job_id} for {profile_source}, Job input type: {input_type}")
 
     # Start processing in background thread
     thread = threading.Thread(target=generate_resume_with_claude, args=(job,))
