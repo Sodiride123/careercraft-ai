@@ -1,8 +1,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { FileText, LayoutDashboard, MessageSquare, Settings } from "lucide-react";
+import { FileText, MessageSquare } from "lucide-react";
 import { Link, useLocation } from "wouter";
 
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {}
@@ -29,50 +28,21 @@ export function Sidebar({ className }: SidebarProps) {
           {/* Navigation Items */}
           <div className="space-y-1">
             <Link href="/">
-              <Button 
-                variant={isActive("/") ? "secondary" : "ghost"} 
-                className="w-full justify-start"
-              >
-                <LayoutDashboard className="mr-2 h-4 w-4" />
-                Dashboard
-              </Button>
-            </Link>
-            <Link href="/chat">
-              <Button 
-                variant={isActive("/chat") ? "secondary" : "ghost"} 
+              <Button
+                variant={isActive("/") ? "secondary" : "ghost"}
                 className="w-full justify-start"
               >
                 <MessageSquare className="mr-2 h-4 w-4" />
                 Chat with Aria
               </Button>
             </Link>
-            <Link href="/resumes">
-              <Button 
-                variant={isActive("/resumes") ? "secondary" : "ghost"} 
+            <Link href="/documents">
+              <Button
+                variant={isActive("/documents") ? "secondary" : "ghost"}
                 className="w-full justify-start"
               >
                 <FileText className="mr-2 h-4 w-4" />
-                My Resumes
-              </Button>
-            </Link>
-          </div>
-        </div>
-
-        <Separator className="mx-4 w-auto opacity-50" />
-
-        {/* System Section */}
-        <div className="px-3 py-2">
-          <h3 className="mb-2 px-4 text-xs font-semibold text-muted-foreground tracking-wider uppercase">
-            System
-          </h3>
-          <div className="space-y-1">
-            <Link href="/settings">
-              <Button 
-                variant={isActive("/settings") ? "secondary" : "ghost"} 
-                className="w-full justify-start"
-              >
-                <Settings className="mr-2 h-4 w-4" />
-                Settings
+                My Documents
               </Button>
             </Link>
           </div>

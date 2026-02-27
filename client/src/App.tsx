@@ -1,25 +1,37 @@
-import { Route, Switch } from "wouter";
+import { Route, Switch, useLocation } from "wouter";
 import Home from "@/pages/Home";
-import Chat from "@/pages/Chat";
-import Resumes from "@/pages/Resumes";
-import Settings from "@/pages/Settings";
+import Documents from "@/pages/Documents";
 import NotFound from "@/pages/NotFound";
-
-function Router() {
-  return (
-    <Switch>
-      <Route path="/" component={Home} />
-      <Route path="/chat" component={Chat} />
-      <Route path="/resumes" component={Resumes} />
-      <Route path="/settings" component={Settings} />
-      <Route path="/404" component={NotFound} />
-      <Route component={NotFound} />
-    </Switch>
-  );
-}
+import { useState } from "react";
 
 function App() {
-  return <Router />;
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+  const [location] = useLocation();
+
+  // Keep Home always mounted so chat state is preserved.
+  // Hide it visually when on other routes.
+  const isHome = location === "/";
+
+  return (
+    <>
+      {/* Home is always rendered but hidden when not active */}
+      <div style={{ display: isHome ? "block" : "none" }}>
+        <Home
+          currentJobId={currentJobId}
+          onJobCreated={setCurrentJobId}
+        />
+      </div>
+
+      {/* Other routes render normally */}
+      {!isHome && (
+        <Switch>
+          <Route path="/documents" component={Documents} />
+          <Route path="/404" component={NotFound} />
+          <Route component={NotFound} />
+        </Switch>
+      )}
+    </>
+  );
 }
 
 export default App;
