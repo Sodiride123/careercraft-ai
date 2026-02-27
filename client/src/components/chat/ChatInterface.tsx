@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
-import { ArrowUp, Bot, FileText, Link as LinkIcon, Paperclip, Settings, User, AlertCircle, Upload } from "lucide-react";
+import { ArrowUp, Bot, FileText, Link as LinkIcon, Paperclip, SquarePen, User, AlertCircle, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 interface Message {
@@ -410,6 +410,26 @@ export function ChatInterface({ onJobCreated }: ChatInterfaceProps) {
     }
   };
 
+  const handleNewChat = () => {
+    if (pollingInterval.current) {
+      clearInterval(pollingInterval.current);
+      pollingInterval.current = null;
+    }
+    setMessages([{
+      id: Date.now().toString(),
+      role: "assistant",
+      content: "Hello! I'm Aria, your career success partner. I'll help you create a tailored resume.\n\nTo get started, please share your professional background. You can:\n\n1. Paste your LinkedIn profile URL\n2. Upload your current resume (PDF, DOCX, or TXT)\n3. Type a summary of your experience",
+      timestamp: new Date(),
+    }]);
+    setInputValue("");
+    setIsTyping(false);
+    setIsProcessing(false);
+    setConversationState("awaiting_linkedin");
+    setLinkedinUrl("");
+    setProfileText("");
+    setProfileSource("");
+  };
+
   const getPlaceholder = () => {
     if (isProcessing) return "Processing...";
     if (conversationState === "awaiting_linkedin") return "Paste LinkedIn URL, upload resume, or describe yourself...";
@@ -431,8 +451,15 @@ export function ChatInterface({ onJobCreated }: ChatInterfaceProps) {
             <p className="text-xs text-muted-foreground">AI Career Consultant</p>
           </div>
         </div>
-        <Button variant="ghost" size="icon" className="h-8 w-8">
-          <Settings className="h-4 w-4" />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          title="New Chat"
+          disabled={isProcessing}
+          onClick={handleNewChat}
+        >
+          <SquarePen className="h-4 w-4" />
         </Button>
       </div>
 

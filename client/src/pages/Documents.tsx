@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
-import { Clock, Download, FileText, Loader2, Mail, Search } from "lucide-react";
+import { Clock, Download, Eye, FileText, Loader2, Mail, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface Resume {
@@ -21,11 +21,22 @@ interface Resume {
 
 type DocTab = "resumes" | "cover-letters";
 
+interface PreviewState {
+  open: boolean;
+  url: string;
+  title: string;
+  jobId: string;
+  type: "resume" | "cover-letter";
+}
+
 export default function Documents() {
   const [resumes, setResumes] = useState<Resume[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<DocTab>("resumes");
+  const [preview, setPreview] = useState<PreviewState>({
+    open: false, url: "", title: "", jobId: "", type: "resume",
+  });
 
   useEffect(() => {
     loadResumes();
@@ -105,7 +116,6 @@ export default function Documents() {
     return title.includes(query) || subtitle.includes(query);
   });
 
-  // Filter by document type based on active tab
   const displayItems = filteredResumes.filter(resume => {
     if (activeTab === "resumes") return resume.pdf_path != null;
     return resume.cover_letter_path != null;
@@ -117,6 +127,23 @@ export default function Documents() {
 
   const handleDownloadCoverLetter = (jobId: string) => {
     window.open(api.getCoverLetterUrl(jobId), '_blank');
+  };
+
+  const handlePreview = (resume: Resume) => {
+    const isResume = activeTab === "resumes";
+    setPreview({
+      open: true,
+      url: isResume
+        ? api.getResumePreviewUrl(resume.job_id)
+        : api.getCoverLetterPreviewUrl(resume.job_id),
+      title: `${getResumeTitle(resume)} — ${isResume ? "Resume" : "Cover Letter"}`,
+      jobId: resume.job_id,
+      type: isResume ? "resume" : "cover-letter",
+    });
+  };
+
+  const closePreview = () => {
+    setPreview(prev => ({ ...prev, open: false }));
   };
 
   const resumeCount = filteredResumes.filter(r => r.pdf_path != null).length;
@@ -133,14 +160,14 @@ export default function Documents() {
     <MainLayout>
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">My Documents</h1>
-          <p className="text-muted-foreground">Manage and download your generated resumes and cover letters.</p>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">My Documents</h1>
+          <p className="text-sm text-muted-foreground">Manage and download your generated resumes and cover letters.</p>
         </div>
 
         {/* Tabs */}
-        <div className="flex items-center gap-6 border-b">
+        <div className="flex items-center gap-6 border-b overflow-x-auto">
           <button
-            className={`pb-3 text-sm font-medium transition-colors border-b-2 ${
+            className={`pb-3 text-sm font-medium transition-colors border-b-2 whitespace-nowrap ${
               activeTab === "resumes"
                 ? "border-primary text-primary"
                 : "border-transparent text-muted-foreground hover:text-foreground"
@@ -156,7 +183,7 @@ export default function Documents() {
             )}
           </button>
           <button
-            className={`pb-3 text-sm font-medium transition-colors border-b-2 ${
+            className={`pb-3 text-sm font-medium transition-colors border-b-2 whitespace-nowrap ${
               activeTab === "cover-letters"
                 ? "border-primary text-primary"
                 : "border-transparent text-muted-foreground hover:text-foreground"
@@ -223,18 +250,28 @@ export default function Documents() {
             </div>
           </div>
         ) : (
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {displayItems.map((resume) => (
               <Card
                 key={resume.job_id}
                 className="group overflow-hidden transition-all hover:shadow-lg hover:border-primary/50"
               >
-                <div className="aspect-[3/4] overflow-hidden bg-gradient-to-br from-primary/10 to-purple-600/10 relative flex items-center justify-center">
+                {/* Clickable preview area */}
+                <div
+                  className="aspect-[3/4] overflow-hidden bg-gradient-to-br from-primary/10 to-purple-600/10 relative flex items-center justify-center cursor-pointer"
+                  onClick={() => handlePreview(resume)}
+                >
                   {activeTab === "resumes" ? (
                     <FileText className="h-24 w-24 text-primary/30" />
                   ) : (
                     <Mail className="h-24 w-24 text-primary/30" />
                   )}
+                  {/* Hover overlay */}
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <div className="bg-white/90 rounded-full p-3">
+                      <Eye className="h-6 w-6 text-primary" />
+                    </div>
+                  </div>
                   <Badge className="absolute top-2 right-2 bg-background/80 text-foreground backdrop-blur-sm hover:bg-background/90">
                     {activeTab === "resumes" ? "Resume" : "Cover Letter"}
                   </Badge>
@@ -253,18 +290,27 @@ export default function Documents() {
                     </div>
                   </CardDescription>
                 </CardHeader>
-                <CardFooter className="p-4 pt-2">
+                <CardFooter className="p-4 pt-2 flex gap-2">
                   <Button
                     variant="outline"
                     size="sm"
-                    className="text-xs h-8 w-full"
+                    className="text-xs h-8 flex-1"
+                    onClick={() => handlePreview(resume)}
+                  >
+                    <Eye className="h-3 w-3 mr-1" />
+                    View
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs h-8 flex-1"
                     onClick={() => activeTab === "resumes"
                       ? handleDownload(resume.job_id)
                       : handleDownloadCoverLetter(resume.job_id)
                     }
                   >
                     <Download className="h-3 w-3 mr-1" />
-                    Download {activeTab === "resumes" ? "Resume" : "Cover Letter"}
+                    Download
                   </Button>
                 </CardFooter>
               </Card>
@@ -272,6 +318,61 @@ export default function Documents() {
           </div>
         )}
       </div>
+
+      {/* Preview Modal */}
+      {preview.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={closePreview}
+          />
+
+          {/* Modal */}
+          <div className="relative w-full max-w-4xl h-[90vh] mx-4 bg-background rounded-xl shadow-2xl border overflow-hidden flex flex-col z-10">
+            {/* Modal header */}
+            <div className="flex items-center justify-between p-4 border-b bg-card">
+              <div className="min-w-0 flex-1 mr-4">
+                <h3 className="font-semibold text-sm truncate">{preview.title}</h3>
+                <p className="text-xs text-muted-foreground">
+                  {preview.type === "resume" ? "Resume" : "Cover Letter"} Preview
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  onClick={() => preview.type === "resume"
+                    ? handleDownload(preview.jobId)
+                    : handleDownloadCoverLetter(preview.jobId)
+                  }
+                >
+                  <Download className="h-3 w-3 mr-1" />
+                  Download
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={closePreview}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Iframe preview */}
+            <div className="flex-1 bg-white">
+              <iframe
+                src={preview.url}
+                className="w-full h-full border-0"
+                title="Document Preview"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </MainLayout>
   );
 }

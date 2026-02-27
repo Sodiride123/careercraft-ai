@@ -137,6 +137,14 @@ class ApiClient {
   getCoverLetterUrl(jobId: string): string {
     return `${this.baseUrl}/api/download-cover-letter/${jobId}`;
   }
+
+  getResumePreviewUrl(jobId: string): string {
+    return `${this.baseUrl}/output/${jobId}_resume.html`;
+  }
+
+  getCoverLetterPreviewUrl(jobId: string): string {
+    return `${this.baseUrl}/output/${jobId}_cover_letter.html`;
+  }
 }
 
 export const api = new ApiClient(API_BASE_URL);

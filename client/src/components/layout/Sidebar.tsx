@@ -6,7 +6,7 @@ import { Link, useLocation } from "wouter";
 
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {}
 
-export function Sidebar({ className }: SidebarProps) {
+export function Sidebar({ className, onClick }: SidebarProps) {
   const [location] = useLocation();
 
   const isActive = (path: string) => location === path;
@@ -26,7 +26,7 @@ export function Sidebar({ className }: SidebarProps) {
           </div>
 
           {/* Navigation Items */}
-          <div className="space-y-1">
+          <div className="space-y-1" onClick={onClick}>
             <Link href="/">
               <Button
                 variant={isActive("/") ? "secondary" : "ghost"}
