@@ -21,8 +21,7 @@ const API_BASE_URL = getApiBaseUrl();
 
 interface GenerateResumeRequest {
   linkedin_url: string;
-  job_ad_url?: string;
-  job_ad_text?: string;
+  job_input: string;
 }
 
 interface GenerateResumeResponse {

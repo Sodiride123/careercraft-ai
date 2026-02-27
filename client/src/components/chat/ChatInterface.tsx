@@ -185,23 +185,22 @@ export function ChatInterface({ onJobCreated }: ChatInterfaceProps) {
           setMessages(prev => [...prev, {
             id: (Date.now() + 1).toString(),
             role: "assistant",
-            content: `Great! I've got your LinkedIn profile: ${extractedUrl}\n\nNow, please provide the job details. You can either:\n\n1. Paste a job posting URL, or\n2. Paste the job description text, or\n3. Simply describe the role (e.g., "Software Manager at OpenAI")`,
+            content: `Great! I've got your LinkedIn profile: ${extractedUrl}\n\nNow, please provide the job details. You can:\n\n1. Paste a LinkedIn job URL\n2. Paste any job posting URL\n3. Paste the job description text\n4. Simply type a job title (e.g., "Software Manager at OpenAI")`,
             timestamp: new Date(),
           }]);
         }, 1000);
 
       } else if (conversationState === "awaiting_job") {
-        // Step 2: Collect job description
-        const jobUrl = messageText.match(/https?:\/\/[^\s]+/)?.[0];
-        const jobText = jobUrl ? messageText.replace(jobUrl, '').trim() : messageText.trim();
+        // Step 2: Collect job input (URL, text, or title - backend detects type)
+        const jobInput = messageText.trim();
 
-        if (!jobUrl && !jobText) {
+        if (!jobInput) {
           setTimeout(() => {
             setIsTyping(false);
             setMessages(prev => [...prev, {
               id: (Date.now() + 1).toString(),
               role: "assistant",
-              content: "Please provide job details - either a job posting URL or describe the role you're applying for.",
+              content: "Please provide job details. You can:\n\n1. Paste a LinkedIn job URL\n2. Paste any job posting URL\n3. Paste the job description text\n4. Simply type a job title (e.g., \"Software Manager at OpenAI\")",
               timestamp: new Date(),
             }]);
           }, 1000);
@@ -212,11 +211,10 @@ export function ChatInterface({ onJobCreated }: ChatInterfaceProps) {
         setIsProcessing(true);
         setConversationState("processing");
 
-        // Call the API
+        // Call the API with single job_input field
         const response = await api.generateResume({
           linkedin_url: linkedinUrl,
-          job_ad_url: jobUrl,
-          job_ad_text: jobText,
+          job_input: jobInput,
         });
 
         // Add initial processing message

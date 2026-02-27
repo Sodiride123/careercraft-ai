@@ -174,6 +174,94 @@ def fetch_linkedin_profile_via_mcp(profile_url: str) -> dict:
         raise
 
 
+def normalize_linkedin_job_url(url: str) -> str:
+    """Normalize LinkedIn job URLs to the format expected by the MCP API.
+
+    The MCP Get_Job_Details tool requires URLs like:
+      https://www.linkedin.com/jobs/view/1234567890
+
+    But users may paste URLs like:
+      https://www.linkedin.com/jobs/collections/recommended/?currentJobId=1234567890
+      https://www.linkedin.com/jobs/search/?currentJobId=1234567890&...
+      https://www.linkedin.com/jobs/view/1234567890/?...
+    """
+    import re
+
+    # Extract job ID from currentJobId parameter
+    match = re.search(r'currentJobId=(\d+)', url)
+    if match:
+        job_id = match.group(1)
+        normalized = f"https://www.linkedin.com/jobs/view/{job_id}"
+        logger.info(f"Normalized LinkedIn job URL: {url} -> {normalized}")
+        return normalized
+
+    # Extract job ID from /jobs/view/DIGITS path
+    match = re.search(r'/jobs/view/(\d+)', url)
+    if match:
+        job_id = match.group(1)
+        normalized = f"https://www.linkedin.com/jobs/view/{job_id}"
+        return normalized
+
+    # Return as-is if we can't normalize
+    return url
+
+
+def fetch_job_via_mcp(job_url: str) -> dict:
+    """Fetch LinkedIn job details using MCP client"""
+    try:
+        from linkedin_client import LinkedInClient
+
+        # Normalize the URL to the format MCP expects
+        job_url = normalize_linkedin_job_url(job_url)
+        logger.info(f"Fetching LinkedIn job via MCP: {job_url}")
+
+        linkedin = LinkedInClient()
+        job_data = linkedin.job.get_job_details(
+            job_url=job_url,
+            include_skills=True
+        )
+
+        if isinstance(job_data, str):
+            job_data = json.loads(job_data)
+
+        logger.info(f"LinkedIn job fetched successfully via MCP")
+        logger.debug(f"MCP job response keys: {list(job_data.keys()) if isinstance(job_data, dict) else type(job_data)}")
+
+        # Check if MCP returned an error
+        if isinstance(job_data, dict) and job_data.get('data') is None and 'message' in job_data:
+            error_msg = job_data.get('message', 'Unknown MCP error')
+            logger.error(f"MCP returned error: {error_msg}")
+            raise Exception(f"LinkedIn MCP error: {error_msg}")
+
+        return job_data
+
+    except Exception as e:
+        logger.error(f"Failed to fetch LinkedIn job via MCP: {str(e)}")
+        raise
+
+
+def detect_job_input_type(job_input: str) -> str:
+    """Detect the type of job input provided by the user.
+    Returns: 'linkedin_url', 'external_url', 'text', or 'title'
+    """
+    job_input = job_input.strip()
+
+    # Check for LinkedIn job URL
+    if 'linkedin.com/jobs' in job_input.lower() or 'linkedin.com/job' in job_input.lower():
+        return 'linkedin_url'
+
+    # Check for any URL
+    if job_input.startswith('http://') or job_input.startswith('https://'):
+        return 'external_url'
+
+    # Check for text description (longer text with multiple sentences/lines)
+    if len(job_input) > 100 or '\n' in job_input:
+        return 'text'
+
+    # Short input - treat as job title
+    return 'title'
+
+
 def generate_resume_with_claude(job: ResumeGeneratorJob):
     """Generate resume and cover letter using Claude Code with MCP tools"""
     try:
@@ -198,8 +286,8 @@ def generate_resume_with_claude(job: ResumeGeneratorJob):
             # Fallback to Claude Code if MCP fails
             logger.warning(f"MCP fetch failed, falling back to Claude Code: {str(mcp_error)}")
             job.add_log(f"MCP fetch failed, using fallback method", "warning")
-            
-            profile_prompt = f'''Use the Get_Profile_Details MCP tool to fetch the LinkedIn profile for {job.linkedin_url} with include_skills=true, include_certifications=true, include_projects=true.
+
+            profile_prompt = f'''Visit this LinkedIn profile URL and extract the person's professional information: {job.linkedin_url}
 
 Return the data as a valid JSON object with this structure:
 {{
@@ -207,16 +295,16 @@ Return the data as a valid JSON object with this structure:
     "headline": "...",
     "summary": "...",
     "location": "...",
-    "experiences": [...],
-    "education": [...],
-    "skills": [...],
-    "certifications": [...]
+    "experiences": [{{"title": "...", "company": "...", "duration": "...", "description": "..."}}],
+    "education": [{{"school": "...", "degree": "...", "field": "...", "dates": "..."}}],
+    "skills": ["skill1", "skill2"],
+    "certifications": [{{"name": "...", "authority": "..."}}]
 }}
 
-Only output the JSON, nothing else.'''
+Extract as much detail as possible. Only output the JSON, nothing else.'''
 
             profile_result = run_claude_command(profile_prompt, timeout=300)
-            job.add_log("LinkedIn profile fetched successfully", "success")
+            job.add_log("LinkedIn profile fetched via fallback", "success")
         
         # Save profile data
         profile_path = os.path.join(output_dir, f"{job.job_id}_profile.json")
@@ -233,23 +321,39 @@ Only output the JSON, nothing else.'''
                 profile_json = profile_json.split('```')[1].split('```')[0].strip()
             
             profile_data = json.loads(profile_json)
-            job.candidate_name = profile_data.get('full_name', None)
+            # Handle MCP response wrapper - data may be nested under "data" key
+            profile_inner = profile_data.get('data', profile_data) if isinstance(profile_data, dict) else profile_data
+            job.candidate_name = (profile_inner.get('full_name', None)
+                                  or profile_inner.get('name', None)
+                                  or profile_data.get('full_name', None))
             job.add_log(f"Extracted candidate name: {job.candidate_name}")
         except Exception as e:
             job.add_log(f"Could not extract candidate name: {str(e)}", "warning")
             pass
         
-        # Step 2: Fetch Job Details (from URL or use provided text)
+        # Step 2: Fetch Job Details (smart routing by input type)
         job.progress = 25
         job.current_step = "Processing job details..."
-        
-        job_ad_text = getattr(job, 'job_ad_text', None)
-        
-        if job.job_ad_url:
-            # Fetch from URL using MCP tool
-            job.add_log(f"Fetching job from URL: {job.job_ad_url}")
-            
-            job_prompt = f'''Use the Get_Job_Details MCP tool to fetch job details for {job.job_ad_url} with include_skills=true.
+
+        # Determine job input - use job_input field first, fall back to legacy fields
+        job_input = getattr(job, 'job_input', None)
+        if not job_input:
+            job_input = job.job_ad_url or getattr(job, 'job_ad_text', '') or ''
+
+        input_type = detect_job_input_type(job_input)
+        job.add_log(f"Job input type detected: {input_type}")
+
+        if input_type == 'linkedin_url':
+            # Fetch from LinkedIn using MCP tool directly
+            job.add_log(f"Fetching job from LinkedIn MCP: {job_input}")
+            try:
+                job_data = fetch_job_via_mcp(job_input)
+                job_result = json.dumps(job_data, indent=2)
+                job.add_log("LinkedIn job fetched successfully via MCP", "success")
+            except Exception as mcp_error:
+                logger.warning(f"MCP job fetch failed, falling back to Claude CLI: {str(mcp_error)}")
+                job.add_log(f"MCP job fetch failed, using fallback", "warning")
+                job_prompt = f'''Analyze this LinkedIn job URL and provide what you can determine about the role: {job_input}
 
 Return the data as a valid JSON object with this structure:
 {{
@@ -262,17 +366,77 @@ Return the data as a valid JSON object with this structure:
 }}
 
 Only output the JSON, nothing else.'''
+                job_result = run_claude_command(job_prompt, timeout=300)
+                job.add_log("Job details analyzed via fallback", "success")
 
+        elif input_type == 'external_url':
+            # Non-LinkedIn URL - fetch page content first, then analyze with Claude
+            job.add_log(f"Analyzing external job URL: {job_input}")
+            try:
+                import requests as http_requests
+                logger.info(f"Fetching external URL content: {job_input}")
+                resp = http_requests.get(job_input, timeout=30, headers={
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                })
+                resp.raise_for_status()
+                page_content = resp.text
+
+                # Check if we got meaningful content (not just a Cloudflare/login page)
+                content_lower = page_content.lower()
+                is_blocked = (
+                    len(page_content) < 500
+                    or 'cloudflare' in content_lower and 'challenge' in content_lower
+                    or 'access denied' in content_lower
+                    or 'please enable javascript' in content_lower
+                    or 'just a moment' in content_lower and 'cloudflare' in content_lower
+                )
+
+                if is_blocked:
+                    logger.warning(f"External URL returned blocked/bot-protected page ({len(page_content)} chars)")
+                    raise Exception("Website requires JavaScript or login — content not accessible")
+
+                page_content = page_content[:15000]  # Limit to avoid prompt overflow
+                logger.info(f"Fetched {len(resp.text)} chars from external URL")
+            except Exception as fetch_err:
+                logger.warning(f"Failed to fetch external URL: {fetch_err}")
+                # Fail the job with a helpful message
+                job.status = "failed"
+                job.error = (
+                    f"Could not access the job posting URL. The website may require login or block automated access.\n\n"
+                    f"Please try one of these alternatives:\n"
+                    f"1. Copy and paste the job description text directly\n"
+                    f"2. Use a LinkedIn job URL instead (these work reliably)\n"
+                    f"3. Type the job title (e.g., 'Software Engineer at Google')"
+                )
+                job.add_log(f"Failed to fetch URL: {fetch_err}", "error")
+                return
+
+            job_prompt = f'''Analyze the following web page content from a job posting URL ({job_input}) and extract the key job information.
+
+WEB PAGE CONTENT:
+{page_content}
+
+Return the data as a valid JSON object with this structure:
+{{
+    "job_title": "...",
+    "company_name": "...",
+    "location": "...",
+    "description": "...",
+    "skills": [...],
+    "requirements": "..."
+}}
+
+Extract as much detail as possible from the page content. Only output the JSON, nothing else.'''
             job_result = run_claude_command(job_prompt, timeout=300)
-            job.add_log("Job details fetched successfully", "success")
-        else:
-            # Use provided job description text
-            job.add_log("Using provided job description text")
-            
+            job.add_log("External job URL analyzed", "success")
+
+        elif input_type == 'text':
+            # Text description - use Claude CLI to extract structure
+            job.add_log("Analyzing provided job description text")
             job_prompt = f'''Analyze the following job description and extract key information.
 
 JOB DESCRIPTION:
-{job_ad_text}
+{job_input}
 
 Return the data as a valid JSON object with this structure:
 {{
@@ -286,15 +450,37 @@ Return the data as a valid JSON object with this structure:
 
 Extract the job title, company name, location, required skills, and key requirements from the description.
 Only output the JSON, nothing else.'''
-
             job_result = run_claude_command(job_prompt, timeout=300)
             job.add_log("Job description analyzed successfully", "success")
+
+        else:
+            # Job title only - create minimal job details
+            job.add_log(f"Processing job title: {job_input}")
+            job_prompt = f'''The user wants to apply for this role: "{job_input}"
+
+Based on this job title, create a reasonable job description. Return the data as a valid JSON object with this structure:
+{{
+    "job_title": "...",
+    "company_name": "...",
+    "location": "...",
+    "description": "...",
+    "skills": [...],
+    "requirements": "..."
+}}
+
+For company_name, use what's provided or "Not specified". For other fields, make reasonable inferences based on the job title. Include common skills and requirements for this type of role.
+Only output the JSON, nothing else.'''
+            job_result = run_claude_command(job_prompt, timeout=300)
+            job.add_log("Job title analyzed successfully", "success")
         
+        # Log the raw job result for debugging
+        logger.info(f"[{job.job_id}] Raw job_result (first 500 chars): {job_result[:500]}")
+
         # Save job data
         job_path = os.path.join(output_dir, f"{job.job_id}_job.json")
         with open(job_path, 'w') as f:
             f.write(job_result)
-        
+
         # Extract job title and company from job data
         try:
             # Remove markdown code blocks if present
@@ -303,13 +489,20 @@ Only output the JSON, nothing else.'''
                 job_json = job_json.split('```json')[1].split('```')[0].strip()
             elif '```' in job_json:
                 job_json = job_json.split('```')[1].split('```')[0].strip()
-            
+
             job_data = json.loads(job_json)
-            job.job_title = job_data.get('job_title', None)
-            job.company_name = job_data.get('company_name', None)
+            # Handle MCP response wrapper - data may be nested under "data" key
+            job_inner = job_data.get('data', job_data) if isinstance(job_data, dict) else job_data
+            job.job_title = (job_inner.get('job_title', None)
+                            or job_inner.get('title', None)
+                            or job_data.get('job_title', None))
+            job.company_name = (job_inner.get('company_name', None)
+                               or job_inner.get('company', None)
+                               or job_data.get('company_name', None))
             job.add_log(f"Extracted job details: {job.job_title} at {job.company_name}")
         except Exception as e:
             job.add_log(f"Could not extract job details: {str(e)}", "warning")
+            logger.warning(f"[{job.job_id}] Failed to parse job JSON. Raw result: {job_result[:300]}")
             pass
         
         # Step 3: Generate Tailored Resume HTML
@@ -536,32 +729,39 @@ def generate_resume():
     """Start a new resume generation job"""
     data = request.json
     linkedin_url = data.get('linkedin_url', '').strip()
-    job_ad_url = data.get('job_ad_url', '').strip()
-    job_ad_text = data.get('job_ad_text', '').strip()
-    
+
+    # Support new single job_input field, with backward compatibility
+    job_input = data.get('job_input', '').strip()
+    if not job_input:
+        # Backward compatibility: combine old fields
+        job_ad_url = data.get('job_ad_url', '').strip()
+        job_ad_text = data.get('job_ad_text', '').strip()
+        job_input = job_ad_url or job_ad_text
+
     # Validate inputs
     if not linkedin_url:
         return jsonify({"error": "LinkedIn URL is required"}), 400
-    
-    if not job_ad_url and not job_ad_text:
-        return jsonify({"error": "Job Ad URL or Description is required"}), 400
-    
+
+    if not job_input:
+        return jsonify({"error": "Job information is required (URL, description, or title)"}), 400
+
     if 'linkedin.com' not in linkedin_url.lower():
         return jsonify({"error": "Please provide a valid LinkedIn profile URL"}), 400
-    
-    # Create new job - use URL if provided, otherwise use text
+
+    # Create new job
     job_id = str(uuid.uuid4())[:8]
-    job = ResumeGeneratorJob(job_id, linkedin_url, job_ad_url if job_ad_url else None)
-    job.job_ad_text = job_ad_text if job_ad_text else None
+    job = ResumeGeneratorJob(job_id, linkedin_url, None)
+    job.job_input = job_input
     jobs[job_id] = job
-    
-    logger.info(f"Created new job {job_id} for LinkedIn: {linkedin_url}, Job URL: {job_ad_url}, Job Text: {'Yes' if job_ad_text else 'No'}")
-    
+
+    input_type = detect_job_input_type(job_input)
+    logger.info(f"Created new job {job_id} for LinkedIn: {linkedin_url}, Job input type: {input_type}")
+
     # Start processing in background thread
     thread = threading.Thread(target=generate_resume_with_claude, args=(job,))
     thread.daemon = True
     thread.start()
-    
+
     return jsonify({"job_id": job_id, "status": "started"})
 
 

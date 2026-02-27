@@ -94,7 +94,7 @@ class _MCPSession:
                     "arguments": arguments,
                     "server_id": self.cfg.server_id
                 },
-                timeout=60
+                timeout=120
             )
             
             r.raise_for_status()
@@ -223,38 +223,64 @@ class Company(_Base):
         })
 
 
+class Job(_Base):
+    """LinkedIn Job API"""
+
+    def get_job_details(self, job_url: str, include_skills: bool = True) -> Any:
+        """
+        Get detailed job information from a LinkedIn job URL
+
+        Args:
+            job_url: LinkedIn job URL (e.g., "https://www.linkedin.com/jobs/view/123456")
+            include_skills: Include required skills
+
+        Returns:
+            Job data as JSON
+        """
+        return self._call("Get_Job_Details", {
+            "job_url": job_url,
+            "include_skills": "true" if include_skills else "false"
+        })
+
+
 class LinkedInClient:
     """
     Unified interface to LinkedIn MCP tools
-    
+
     Usage:
         # Auto-load from .env
         linkedin = LinkedInClient()
-        
+
         # Get profile
         profile = linkedin.profile.get_profile(
             "https://www.linkedin.com/in/username",
             include_skills=True
         )
-        
+
+        # Get job details
+        job = linkedin.job.get_job_details(
+            "https://www.linkedin.com/jobs/view/123456"
+        )
+
         # Custom config
         config = LinkedInConfig(api_key="custom-key")
         linkedin = LinkedInClient(config)
     """
-    
+
     def __init__(self, config: Optional[LinkedInConfig] = None):
         """
         Initialize LinkedIn client
-        
+
         Args:
             config: Optional configuration. If not provided, auto-loads from .env
         """
         self.config = config or LinkedInConfig()
         self._mcp = _MCPSession(self.config)
-        
+
         # Initialize API modules
         self.profile = Profile(self._mcp, self.config)
         self.company = Company(self._mcp, self.config)
+        self.job = Job(self._mcp, self.config)
 
 
 # Convenience function for quick access
