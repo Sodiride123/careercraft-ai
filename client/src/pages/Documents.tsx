@@ -55,14 +55,26 @@ export default function Documents() {
   };
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
+    // Append 'Z' if no timezone info — backend stores UTC via datetime.utcnow()
+    const normalized = dateString.endsWith('Z') || dateString.includes('+') || dateString.includes('T') && dateString.match(/[+-]\d{2}:\d{2}$/)
+      ? dateString
+      : dateString + 'Z';
+    const date = new Date(normalized);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
+
+    // Handle clock skew / future timestamps
+    if (diffMs < 0) {
+      return 'Just now';
+    }
+
     const diffMins = Math.floor(diffMs / 60000);
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
 
-    if (diffMins < 60) {
+    if (diffMins < 1) {
+      return 'Just now';
+    } else if (diffMins < 60) {
       return `${diffMins} minute${diffMins !== 1 ? 's' : ''} ago`;
     } else if (diffHours < 24) {
       return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;

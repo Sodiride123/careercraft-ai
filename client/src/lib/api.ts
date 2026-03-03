@@ -23,6 +23,27 @@ interface GenerateResumeRequest {
   linkedin_url?: string;
   profile_text?: string;
   job_input: string;
+  edit_instructions?: string;
+  edit_target?: "resume" | "cover_letter" | "both";
+  previous_job_id?: string;
+}
+
+interface ChatRequest {
+  message: string;
+  history?: { role: string; content: string }[];
+  context?: {
+    profile_summary?: string;
+    job_title?: string;
+    company?: string;
+  };
+}
+
+interface ChatResponse {
+  response: string;
+  action: "generate" | "edit" | null;
+  edit_target: "resume" | "cover_letter" | "both" | null;
+  job_input: string | null;
+  edit_instructions: string | null;
 }
 
 interface UploadResponse {
@@ -45,6 +66,8 @@ interface JobStatus {
   current_step: string;
   result?: string;
   error?: string;
+  job_title?: string | null;
+  company_name?: string | null;
 }
 
 interface Resume {
@@ -128,6 +151,13 @@ class ApiClient {
     }
 
     return response.json();
+  }
+
+  async chat(data: ChatRequest): Promise<ChatResponse> {
+    return this.request("/api/chat", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
   }
 
   getDownloadUrl(jobId: string): string {
