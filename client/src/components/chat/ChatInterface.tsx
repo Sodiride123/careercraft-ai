@@ -22,27 +22,73 @@ interface ChatInterfaceProps {
 type ConversationState = "initial" | "awaiting_linkedin" | "awaiting_job" | "processing" | "completed";
 type ProfileSource = "linkedin" | "file" | "text" | "";
 
+const SESSION_STORAGE_KEY = "careercraft_chat_session";
+
+interface PersistedSession {
+  messages: Array<{
+    id: string;
+    role: "user" | "assistant";
+    content: string;
+    timestamp: string;
+    status?: "sending" | "sent" | "error";
+  }>;
+  conversationState: ConversationState;
+  linkedinUrl: string;
+  profileText: string;
+  profileSource: ProfileSource;
+  lastJobInput: string;
+  lastJobId: string;
+  lastJobTitle: string;
+  lastCompany: string;
+}
+
+function loadPersistedSession(): PersistedSession | null {
+  try {
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const data: PersistedSession = JSON.parse(raw);
+    if (!data.messages || !Array.isArray(data.messages) || data.messages.length === 0) {
+      return null;
+    }
+    // If session was mid-processing, treat as completed (the background thread is gone)
+    if (data.conversationState === "processing") {
+      data.conversationState = "completed";
+    }
+    return data;
+  } catch {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+    return null;
+  }
+}
+
+const DEFAULT_GREETING = "Hello! I'm Aria, your career success partner. I'll help you create a tailored resume.\n\nTo get started, please share your professional background. You can:\n\n1. Paste your LinkedIn profile URL\n2. Upload your current resume (PDF, DOCX, or TXT)\n3. Type a summary of your experience";
+
 export function ChatInterface({ onJobCreated }: ChatInterfaceProps) {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      role: "assistant",
-      content: "Hello! I'm Aria, your career success partner. I'll help you create a tailored resume.\n\nTo get started, please share your professional background. You can:\n\n1. Paste your LinkedIn profile URL\n2. Upload your current resume (PDF, DOCX, or TXT)\n3. Type a summary of your experience",
-      timestamp: new Date(),
-    },
-  ]);
+  const [persisted] = useState<PersistedSession | null>(() => loadPersistedSession());
+
+  const [messages, setMessages] = useState<Message[]>(() => {
+    if (persisted) {
+      return persisted.messages.map(m => ({
+        ...m,
+        timestamp: new Date(m.timestamp),
+      }));
+    }
+    return [{ id: "1", role: "assistant" as const, content: DEFAULT_GREETING, timestamp: new Date() }];
+  });
   const [inputValue, setInputValue] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [conversationState, setConversationState] = useState<ConversationState>("awaiting_linkedin");
-  const [linkedinUrl, setLinkedinUrl] = useState<string>("");
-  const [profileText, setProfileText] = useState<string>("");
-  const [profileSource, setProfileSource] = useState<ProfileSource>("");
-  const [lastJobInput, setLastJobInput] = useState<string>("");
-  const [lastJobId, setLastJobId] = useState<string>("");
+  const [conversationState, setConversationState] = useState<ConversationState>(
+    () => persisted?.conversationState ?? "awaiting_linkedin"
+  );
+  const [linkedinUrl, setLinkedinUrl] = useState<string>(() => persisted?.linkedinUrl ?? "");
+  const [profileText, setProfileText] = useState<string>(() => persisted?.profileText ?? "");
+  const [profileSource, setProfileSource] = useState<ProfileSource>(() => persisted?.profileSource ?? "");
+  const [lastJobInput, setLastJobInput] = useState<string>(() => persisted?.lastJobInput ?? "");
+  const [lastJobId, setLastJobId] = useState<string>(() => persisted?.lastJobId ?? "");
   const [pendingFileText, setPendingFileText] = useState<string>("");
-  const [lastJobTitle, setLastJobTitle] = useState<string>("");
-  const [lastCompany, setLastCompany] = useState<string>("");
+  const [lastJobTitle, setLastJobTitle] = useState<string>(() => persisted?.lastJobTitle ?? "");
+  const [lastCompany, setLastCompany] = useState<string>(() => persisted?.lastCompany ?? "");
   const scrollRef = useRef<HTMLDivElement>(null);
   const pollingInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -61,6 +107,40 @@ export function ChatInterface({ onJobCreated }: ChatInterfaceProps) {
       }
     };
   }, []);
+
+  // Restore preview panel on mount if there's a persisted job
+  useEffect(() => {
+    if (persisted?.lastJobId && onJobCreated) {
+      onJobCreated(persisted.lastJobId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist session to localStorage (debounced)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      const sessionData: PersistedSession = {
+        messages: messages.map(m => ({
+          ...m,
+          timestamp: m.timestamp.toISOString(),
+        })),
+        conversationState,
+        linkedinUrl,
+        profileText,
+        profileSource,
+        lastJobInput,
+        lastJobId,
+        lastJobTitle,
+        lastCompany,
+      };
+      try {
+        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessionData));
+      } catch (e) {
+        console.warn("Failed to persist session:", e);
+      }
+    }, 300);
+    return () => clearTimeout(timeoutId);
+  }, [messages, conversationState, linkedinUrl, profileText, profileSource, lastJobInput, lastJobId, lastJobTitle, lastCompany]);
 
   const extractLinkedInUrl = (text: string): string | null => {
     const cleanText = text.trim();
@@ -538,6 +618,7 @@ export function ChatInterface({ onJobCreated }: ChatInterfaceProps) {
   };
 
   const handleNewChat = () => {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
     if (pollingInterval.current) {
       clearInterval(pollingInterval.current);
       pollingInterval.current = null;
@@ -545,7 +626,7 @@ export function ChatInterface({ onJobCreated }: ChatInterfaceProps) {
     setMessages([{
       id: Date.now().toString(),
       role: "assistant",
-      content: "Hello! I'm Aria, your career success partner. I'll help you create a tailored resume.\n\nTo get started, please share your professional background. You can:\n\n1. Paste your LinkedIn profile URL\n2. Upload your current resume (PDF, DOCX, or TXT)\n3. Type a summary of your experience",
+      content: DEFAULT_GREETING,
       timestamp: new Date(),
     }]);
     setInputValue("");

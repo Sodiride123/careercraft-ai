@@ -108,3 +108,13 @@
     }
   }
 }
+
+/* Hide sandbox preview banner and connection status injected by myninja.ai */
+#ninja-daytona-banner,
+#ninja-connection-status,
+#ninja-badge {
+  display: none !important;
+}
+body {
+  padding-top: 0 !important;
+}

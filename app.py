@@ -74,6 +74,8 @@ class ResumeGeneratorJob:
     def to_dict(self):
         return {
             "job_id": self.job_id,
+            "linkedin_url": self.linkedin_url,
+            "job_ad_url": self.job_ad_url,
             "status": self.status,
             "progress": self.progress,
             "current_step": self.current_step,
@@ -87,6 +89,68 @@ class ResumeGeneratorJob:
             "job_title": self.job_title,
             "company_name": self.company_name
         }
+
+    @classmethod
+    def from_dict(cls, data):
+        """Reconstruct a ResumeGeneratorJob from a dict (e.g., loaded from JSON)."""
+        job = cls(
+            job_id=data["job_id"],
+            linkedin_url=data.get("linkedin_url"),
+            job_ad_url=data.get("job_ad_url"),
+        )
+        job.status = data.get("status", "completed")
+        job.progress = data.get("progress", 100)
+        job.current_step = data.get("current_step", "")
+        job.logs = data.get("logs", [])
+        job.result = data.get("result")
+        job.error = data.get("error")
+        job.pdf_path = data.get("pdf_path")
+        job.cover_letter_path = data.get("cover_letter_path")
+        job.created_at = data.get("created_at", datetime.now(timezone.utc).isoformat())
+        job.candidate_name = data.get("candidate_name")
+        job.job_title = data.get("job_title")
+        job.company_name = data.get("company_name")
+        # Jobs that were in-progress when server stopped are effectively failed
+        if job.status in ("running", "pending"):
+            job.status = "failed"
+            job.error = job.error or "Server restarted while job was in progress"
+        return job
+
+
+JOBS_INDEX_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output", "jobs_index.json")
+
+
+def save_jobs_index():
+    """Persist the in-memory jobs dict to disk as JSON."""
+    try:
+        data = {job_id: job.to_dict() for job_id, job in jobs.items()}
+        tmp_path = JOBS_INDEX_PATH + ".tmp"
+        with open(tmp_path, 'w') as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp_path, JOBS_INDEX_PATH)
+        logger.debug(f"Saved jobs index ({len(data)} jobs)")
+    except Exception as e:
+        logger.error(f"Failed to save jobs index: {e}")
+
+
+def load_jobs_index():
+    """Load jobs dict from disk on startup. Populates the global `jobs` dict."""
+    global jobs
+    if not os.path.exists(JOBS_INDEX_PATH):
+        logger.info("No jobs index file found, starting fresh")
+        return
+    try:
+        with open(JOBS_INDEX_PATH, 'r') as f:
+            data = json.load(f)
+        for job_id, job_data in data.items():
+            jobs[job_id] = ResumeGeneratorJob.from_dict(job_data)
+        logger.info(f"Loaded {len(jobs)} jobs from index")
+    except Exception as e:
+        logger.error(f"Failed to load jobs index: {e}")
+
+
+# Restore jobs from previous sessions
+load_jobs_index()
 
 
 def run_claude_command(prompt: str, timeout: int = 180, use_tools: bool = True) -> str:
@@ -462,6 +526,7 @@ Output ONLY the complete HTML code starting with <!DOCTYPE html> and ending with
                 job.current_step = "Documents updated successfully!"
                 job.result = f"{'Resume' if edit_target == 'resume' else 'Cover letter' if edit_target == 'cover_letter' else 'Resume and cover letter'} updated successfully"
                 job.add_log("Edit completed!", "success")
+                save_jobs_index()
                 return  # skip the full pipeline below
 
             else:
@@ -635,6 +700,7 @@ Only output the JSON, nothing else.'''
                     f"3. Type the job title (e.g., 'Software Engineer at Google')"
                 )
                 job.add_log(f"Failed to fetch URL: {fetch_err}", "error")
+                save_jobs_index()
                 return
 
             job_prompt = f'''Analyze the following web page content from a job posting URL ({job_input}) and extract the key job information.
@@ -915,12 +981,14 @@ The user has specifically asked for the following changes to the cover letter. P
         job.current_step = "Resume & Cover Letter generated successfully!"
         job.result = "Resume and Cover Letter PDFs generated successfully"
         job.add_log("All documents created successfully!", "success")
-            
+        save_jobs_index()
+
     except Exception as e:
         job.status = "failed"
         job.error = str(e)
         job.add_log(f"Error: {str(e)}", "error")
         logger.error(f"Job {job.job_id} failed: {str(e)}")
+        save_jobs_index()
 
 
 @app.route('/')
@@ -1040,6 +1108,7 @@ def generate_resume():
     if previous_job_id:
         job.previous_job_id = previous_job_id
     jobs[job_id] = job
+    save_jobs_index()
 
     input_type = detect_job_input_type(job_input)
     profile_source = "profile_text" if profile_text else f"LinkedIn: {linkedin_url}"
