@@ -42,13 +42,16 @@ When a user requests changes to existing documents (e.g., "shorten the cover let
 
 ### Conversation Flow
 
+All user messages go through the LLM, which decides what to do:
+
 ```
-Initial:  Profile → Job → Generate (state machine)
-After:    Free-form chat with Aria (LLM-driven)
-            ├── Questions & advice    → conversational response
-            ├── Edit request          → regenerate targeted doc only
-            ├── New job + "generate"  → full generation with saved profile
-            └── URL / file shared     → Aria asks what to do
+Every message → Aria (LLM) decides:
+  ├── Profile provided     → save it, ask for job info
+  ├── Job + profile ready  → generate resume & cover letter
+  ├── Edit request         → modify only the targeted section
+  ├── New job posting      → regenerate with saved profile
+  ├── Questions & advice   → conversational response
+  └── File / URL shared    → Aria asks what to do
 ```
 
 ### Dependencies
@@ -80,7 +83,7 @@ careercraft-ai/
 ├── setup.sh                # Dependency setup (sandbox)
 ├── client/                 # React frontend (Vite)
 │   └── src/
-│       ├── components/chat/ChatInterface.tsx  # Main chat UI & state machine
+│       ├── components/chat/ChatInterface.tsx  # Main chat UI (LLM-driven)
 │       ├── lib/api.ts                         # API client
 │       └── pages/Documents.tsx                # Document management page
 ├── output/                 # Generated files (HTML, PDF, JSON)
@@ -142,6 +145,7 @@ This enables faster, more reliable LinkedIn data fetching. Without it, Claude CL
 | `/api/download/<job_id>` | GET | Download resume PDF |
 | `/api/download-cover-letter/<job_id>` | GET | Download cover letter PDF |
 | `/api/resumes` | GET | List all completed documents |
+| `/api/resumes/<job_id>` | DELETE | Delete a document and its files |
 | `/api/upload` | POST | Upload and parse a file (PDF/DOCX/TXT) |
 | `/api/chat` | POST | LLM-driven conversational follow-up |
 
