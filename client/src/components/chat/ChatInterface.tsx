@@ -19,7 +19,6 @@ interface ChatInterfaceProps {
   onJobCreated?: (jobId: string) => void;
 }
 
-type ConversationState = "initial" | "awaiting_linkedin" | "awaiting_job" | "processing" | "completed";
 type ProfileSource = "linkedin" | "file" | "text" | "";
 
 const SESSION_STORAGE_KEY = "careercraft_chat_session";
@@ -32,7 +31,6 @@ interface PersistedSession {
     timestamp: string;
     status?: "sending" | "sent" | "error";
   }>;
-  conversationState: ConversationState;
   linkedinUrl: string;
   profileText: string;
   profileSource: ProfileSource;
@@ -49,10 +47,6 @@ function loadPersistedSession(): PersistedSession | null {
     const data: PersistedSession = JSON.parse(raw);
     if (!data.messages || !Array.isArray(data.messages) || data.messages.length === 0) {
       return null;
-    }
-    // If session was mid-processing, treat as completed (the background thread is gone)
-    if (data.conversationState === "processing") {
-      data.conversationState = "completed";
     }
     return data;
   } catch {
@@ -78,15 +72,11 @@ export function ChatInterface({ onJobCreated }: ChatInterfaceProps) {
   const [inputValue, setInputValue] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [conversationState, setConversationState] = useState<ConversationState>(
-    () => persisted?.conversationState ?? "awaiting_linkedin"
-  );
   const [linkedinUrl, setLinkedinUrl] = useState<string>(() => persisted?.linkedinUrl ?? "");
   const [profileText, setProfileText] = useState<string>(() => persisted?.profileText ?? "");
   const [profileSource, setProfileSource] = useState<ProfileSource>(() => persisted?.profileSource ?? "");
   const [lastJobInput, setLastJobInput] = useState<string>(() => persisted?.lastJobInput ?? "");
   const [lastJobId, setLastJobId] = useState<string>(() => persisted?.lastJobId ?? "");
-  const [pendingFileText, setPendingFileText] = useState<string>("");
   const [lastJobTitle, setLastJobTitle] = useState<string>(() => persisted?.lastJobTitle ?? "");
   const [lastCompany, setLastCompany] = useState<string>(() => persisted?.lastCompany ?? "");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -124,7 +114,6 @@ export function ChatInterface({ onJobCreated }: ChatInterfaceProps) {
           ...m,
           timestamp: m.timestamp.toISOString(),
         })),
-        conversationState,
         linkedinUrl,
         profileText,
         profileSource,
@@ -140,39 +129,7 @@ export function ChatInterface({ onJobCreated }: ChatInterfaceProps) {
       }
     }, 300);
     return () => clearTimeout(timeoutId);
-  }, [messages, conversationState, linkedinUrl, profileText, profileSource, lastJobInput, lastJobId, lastJobTitle, lastCompany]);
-
-  const extractLinkedInUrl = (text: string): string | null => {
-    const cleanText = text.trim();
-
-    // Pattern 1: Full URL with protocol
-    let linkedinMatch = cleanText.match(/https?:\/\/(www\.)?linkedin\.com\/[^\s]+/i);
-    if (linkedinMatch) return linkedinMatch[0];
-
-    // Pattern 2: URL without protocol
-    linkedinMatch = cleanText.match(/(www\.)?linkedin\.com\/[^\s]+/i);
-    if (linkedinMatch) return `https://${linkedinMatch[0]}`;
-
-    // Pattern 3: Just the path (in/username)
-    linkedinMatch = cleanText.match(/^in\/[a-zA-Z0-9-]+\/?$/i);
-    if (linkedinMatch) return `https://www.linkedin.com/${linkedinMatch[0]}`;
-
-    // Pattern 4: Username with hyphens
-    if (/^[a-zA-Z0-9-]{3,100}$/.test(cleanText) && cleanText.includes('-')) {
-      return `https://www.linkedin.com/in/${cleanText}`;
-    }
-
-    return null;
-  };
-
-  const isLinkedInJobUrl = (text: string): boolean => {
-    return /linkedin\.com\/jobs\//i.test(text);
-  };
-
-  const isUrl = (text: string): boolean => {
-    const trimmed = text.trim();
-    return trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('www.');
-  };
+  }, [messages, linkedinUrl, profileText, profileSource, lastJobInput, lastJobId, lastJobTitle, lastCompany]);
 
   /** Start a generation job, saving the job input for potential re-generation */
   const startGeneration = async (
@@ -181,10 +138,14 @@ export function ChatInterface({ onJobCreated }: ChatInterfaceProps) {
     editInstructions?: string,
     editTarget?: "resume" | "cover_letter" | "both",
     previousJobId?: string,
+    profileOverride?: { linkedinUrl?: string; profileText?: string; profileSource: ProfileSource },
   ) => {
     setLastJobInput(jobInput);
     setIsProcessing(true);
-    setConversationState("processing");
+
+    const effectiveSource = profileOverride?.profileSource ?? profileSource;
+    const effectiveLinkedinUrl = profileOverride?.linkedinUrl ?? linkedinUrl;
+    const effectiveProfileText = profileOverride?.profileText ?? profileText;
 
     const request: {
       job_input: string;
@@ -196,10 +157,10 @@ export function ChatInterface({ onJobCreated }: ChatInterfaceProps) {
     } = {
       job_input: jobInput,
     };
-    if (profileSource === "linkedin") {
-      request.linkedin_url = linkedinUrl;
+    if (effectiveSource === "linkedin") {
+      request.linkedin_url = effectiveLinkedinUrl;
     } else {
-      request.profile_text = profileText;
+      request.profile_text = effectiveProfileText;
     }
     if (editInstructions) {
       request.edit_instructions = editInstructions;
@@ -221,6 +182,182 @@ export function ChatInterface({ onJobCreated }: ChatInterfaceProps) {
     pollingInterval.current = setInterval(() => {
       pollJobStatus(response.job_id);
     }, 2000);
+  };
+
+  const pollJobStatus = async (jobId: string) => {
+    try {
+      const status = await api.getJobStatus(jobId);
+
+      // Update progress message
+      if (status.current_step) {
+        setMessages(prev => {
+          const newMessages = [...prev];
+          const lastMessage = newMessages[newMessages.length - 1];
+          if (lastMessage.role === "assistant" && lastMessage.id === `status-${jobId}`) {
+            lastMessage.content = `${status.current_step}\n\nProgress: ${status.progress}%`;
+          }
+          return newMessages;
+        });
+      }
+
+      if (status.status === "completed") {
+        if (pollingInterval.current) {
+          clearInterval(pollingInterval.current);
+          pollingInterval.current = null;
+        }
+        setIsProcessing(false);
+        setIsTyping(false);
+
+        // Track job ID, title, and company for context in follow-up chat/edits
+        setLastJobId(jobId);
+        if (status.job_title) setLastJobTitle(status.job_title);
+        if (status.company_name) setLastCompany(status.company_name);
+
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          role: "assistant",
+          content: `Your tailored resume and cover letter have been generated successfully!\n\n${status.result || 'Documents are ready for download.'}\n\nYou can view and download them from the preview panel or the My Documents page.\n\nWhat would you like to do next? You can paste a new job posting, update your profile, request edits, or ask me anything!`,
+          timestamp: new Date(),
+        }]);
+
+        if (onJobCreated) {
+          onJobCreated(jobId);
+        }
+      } else if (status.status === "failed") {
+        if (pollingInterval.current) {
+          clearInterval(pollingInterval.current);
+          pollingInterval.current = null;
+        }
+        setIsProcessing(false);
+        setIsTyping(false);
+
+        const errorMsg = status.error || 'Unknown error occurred.';
+        const hasProfile = profileSource === "linkedin" ? !!linkedinUrl : !!profileText;
+
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          role: "assistant",
+          content: `Sorry, there was an error generating your resume:\n\n${errorMsg}\n\n${hasProfile ? 'Your profile is still saved — you can try again with a different job posting or request.' : 'Please try again or contact support if the issue persists.'}`,
+          timestamp: new Date(),
+        }]);
+      }
+    } catch (error) {
+      console.error('Error polling job status:', error);
+    }
+  };
+
+  /** Central function: send any user interaction through the LLM */
+  const sendToLLM = async (userMessage: string, fileText?: string) => {
+    setIsTyping(true);
+
+    try {
+      // Build conversation history (last 15 messages for context)
+      const recentHistory = messages.slice(-15).map(m => ({
+        role: m.role,
+        content: m.content,
+      }));
+
+      // If there's file content, enrich the message with a preview
+      let enrichedMessage = userMessage;
+      if (fileText) {
+        enrichedMessage = `[User uploaded a file with this content (${fileText.length} chars): "${fileText.slice(0, 500)}..."]\n\nUser's message: ${userMessage}`;
+      }
+
+      const hasProfile = profileSource === "linkedin" ? !!linkedinUrl : !!profileText;
+      const hasGenerated = !!lastJobId;
+
+      const chatResult = await api.chat({
+        message: enrichedMessage,
+        history: recentHistory,
+        context: {
+          profile_summary: profileSource === "linkedin"
+            ? `LinkedIn profile: ${linkedinUrl}`
+            : profileText
+              ? `Uploaded/typed profile (${profileText.length} chars)`
+              : "Not provided",
+          has_profile: hasProfile,
+          has_generated: hasGenerated,
+          job_title: lastJobTitle || undefined,
+          company: lastCompany || undefined,
+        },
+      });
+
+      setIsTyping(false);
+
+      // Always show Aria's response first
+      if (chatResult.response) {
+        setMessages(prev => [...prev, {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: chatResult.response,
+          timestamp: new Date(),
+        }]);
+      }
+
+      // Handle profile updates from LLM response
+      let profileOverride: { linkedinUrl?: string; profileText?: string; profileSource: ProfileSource } | undefined;
+
+      if (chatResult.new_linkedin_url) {
+        const url = chatResult.new_linkedin_url;
+        setLinkedinUrl(url);
+        setProfileSource("linkedin");
+        setProfileText("");
+        profileOverride = { linkedinUrl: url, profileSource: "linkedin" };
+      } else if (chatResult.update_profile) {
+        const text = fileText || userMessage;
+        setProfileText(text);
+        setProfileSource(fileText ? "file" : "text");
+        setLinkedinUrl("");
+        profileOverride = { profileText: text, profileSource: fileText ? "file" : "text" };
+      }
+
+      // Handle actions
+      if (chatResult.action === "generate" && chatResult.job_input) {
+        await startGeneration(
+          chatResult.job_input,
+          "Starting resume generation...",
+          undefined,
+          undefined,
+          undefined,
+          profileOverride,
+        );
+      } else if (chatResult.action === "edit" && chatResult.edit_instructions && lastJobInput) {
+        await startGeneration(
+          lastJobInput,
+          "Applying your changes...",
+          chatResult.edit_instructions,
+          chatResult.edit_target || "both",
+          lastJobId || undefined,
+          profileOverride,
+        );
+      }
+
+    } catch {
+      setIsTyping(false);
+      setMessages(prev => [...prev, {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: "I'm having trouble processing that right now. Please try again, or hit 'New Chat' to start fresh.",
+        timestamp: new Date(),
+      }]);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!inputValue.trim() || isProcessing) return;
+
+    const msg = inputValue;
+    setInputValue("");
+
+    setMessages(prev => [...prev, {
+      id: Date.now().toString(),
+      role: "user",
+      content: msg,
+      timestamp: new Date(),
+      status: "sent",
+    }]);
+
+    await sendToLLM(msg);
   };
 
   const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -250,368 +387,16 @@ export function ChatInterface({ onJobCreated }: ChatInterfaceProps) {
       timestamp: new Date(),
       status: "sent",
     }]);
-    setIsTyping(true);
 
     try {
       const result = await api.uploadFile(file);
-
-      if (conversationState === "awaiting_linkedin") {
-        // File is a profile/resume
-        setProfileText(result.text);
-        setProfileSource("file");
-        setConversationState("awaiting_job");
-
-        setIsTyping(false);
-        setMessages(prev => [...prev, {
-          id: Date.now().toString(),
-          role: "assistant",
-          content: `Got it! I've extracted your profile from "${file.name}" (${result.characters.toLocaleString()} characters).\n\nNow, please provide the job you're targeting. You can:\n\n1. Paste a LinkedIn job URL (recommended)\n2. Paste the job description text\n3. Type a job title (e.g., "Software Engineer at Google")`,
-          timestamp: new Date(),
-        }]);
-      } else if (conversationState === "completed") {
-        // In completed state — don't auto-generate. Store the file text
-        // and ask the user what they want to do with it.
-        setPendingFileText(result.text);
-        setIsTyping(false);
-        setMessages(prev => [...prev, {
-          id: Date.now().toString(),
-          role: "assistant",
-          content: `I've processed "${file.name}" (${result.characters.toLocaleString()} characters).\n\nWhat would you like me to do with this?\n\n1. Use it as a new job description to generate a new resume\n2. Use it to update your profile\n3. Something else — just tell me!`,
-          timestamp: new Date(),
-        }]);
-      } else if (conversationState === "awaiting_job") {
-        // File is a job description
-        setIsTyping(false);
-
-        // Use the file text as job input and start generation
-        setIsTyping(false);
-        await startGeneration(result.text, "Starting resume generation...");
-      }
+      await sendToLLM(`I've uploaded my file: ${file.name}`, result.text);
     } catch (error) {
       setIsTyping(false);
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
         role: "assistant",
         content: `Failed to process file: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        timestamp: new Date(),
-      }]);
-    }
-  };
-
-  const pollJobStatus = async (jobId: string) => {
-    try {
-      const status = await api.getJobStatus(jobId);
-
-      // Update progress message
-      if (status.current_step) {
-        setMessages(prev => {
-          const newMessages = [...prev];
-          const lastMessage = newMessages[newMessages.length - 1];
-          if (lastMessage.role === "assistant" && lastMessage.id === `status-${jobId}`) {
-            lastMessage.content = `${status.current_step}\n\nProgress: ${status.progress}%`;
-          }
-          return newMessages;
-        });
-      }
-
-      if (status.status === "completed") {
-        if (pollingInterval.current) {
-          clearInterval(pollingInterval.current);
-          pollingInterval.current = null;
-        }
-        setIsProcessing(false);
-        setIsTyping(false);
-        setConversationState("completed");
-
-        // Track job ID, title, and company for context in follow-up chat/edits
-        setLastJobId(jobId);
-        if (status.job_title) setLastJobTitle(status.job_title);
-        if (status.company_name) setLastCompany(status.company_name);
-
-        const hasProfile = profileSource === "linkedin" ? !!linkedinUrl : !!profileText;
-        const followUpHint = hasProfile
-          ? `What would you like to do next?\n\n1. Paste a new job posting — I'll reuse your profile and generate a new resume\n2. Share a new LinkedIn URL or upload a new resume to update your profile\n3. Hit the "New Chat" button in the top-right to start completely fresh`
-          : `Would you like to create another resume? Share your profile to start again!`;
-
-        setMessages(prev => [...prev, {
-          id: Date.now().toString(),
-          role: "assistant",
-          content: `Your tailored resume and cover letter have been generated successfully!\n\n${status.result || 'Documents are ready for download.'}\n\nYou can view and download them from the preview panel or the My Documents page.\n\n${followUpHint}`,
-          timestamp: new Date(),
-        }]);
-
-        if (onJobCreated) {
-          onJobCreated(jobId);
-        }
-      } else if (status.status === "failed") {
-        if (pollingInterval.current) {
-          clearInterval(pollingInterval.current);
-          pollingInterval.current = null;
-        }
-        setIsProcessing(false);
-        setIsTyping(false);
-
-        // Check if the error is about job URL access — return to awaiting_job so user can retry
-        const errorMsg = status.error || 'Unknown error occurred.';
-        const isJobAccessError = errorMsg.toLowerCase().includes('could not access')
-          || errorMsg.toLowerCase().includes('website may require')
-          || errorMsg.toLowerCase().includes('try one of these alternatives');
-
-        if (isJobAccessError) {
-          setConversationState("awaiting_job");
-          setMessages(prev => [...prev, {
-            id: Date.now().toString(),
-            role: "assistant",
-            content: `${errorMsg}\n\nPlease try again with a different job input.`,
-            timestamp: new Date(),
-          }]);
-        } else {
-          // Return to completed (not initial) if we have a profile, so user can retry
-          const hasProfile = profileSource === "linkedin" ? !!linkedinUrl : !!profileText;
-          setConversationState(hasProfile ? "completed" : "initial");
-          setMessages(prev => [...prev, {
-            id: Date.now().toString(),
-            role: "assistant",
-            content: `Sorry, there was an error generating your resume:\n\n${errorMsg}\n\n${hasProfile ? 'Your profile is still saved — you can try again with a different job posting or request.' : 'Please try again or contact support if the issue persists.'}`,
-            timestamp: new Date(),
-          }]);
-        }
-      }
-    } catch (error) {
-      console.error('Error polling job status:', error);
-    }
-  };
-
-  const handleSendMessage = async () => {
-    if (!inputValue.trim() || isProcessing) return;
-
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      content: inputValue,
-      timestamp: new Date(),
-      status: "sent",
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-    const messageText = inputValue;
-    setInputValue("");
-    setIsTyping(true);
-
-    try {
-      if (conversationState === "awaiting_linkedin") {
-        // Step 1: Collect profile — LinkedIn URL, or free text
-        const extractedUrl = extractLinkedInUrl(messageText);
-
-        if (isLinkedInJobUrl(messageText)) {
-          // LinkedIn JOB URL pasted when we need a profile — guide the user
-          setTimeout(() => {
-            setIsTyping(false);
-            setMessages(prev => [...prev, {
-              id: (Date.now() + 1).toString(),
-              role: "assistant",
-              content: "That looks like a LinkedIn job posting, not a profile URL. I need your professional background first.\n\nPlease share:\n\n1. Your LinkedIn profile URL (e.g., linkedin.com/in/your-name)\n2. Upload your resume (use the paperclip button)\n3. Type a summary of your experience",
-              timestamp: new Date(),
-            }]);
-          }, 1000);
-        } else if (extractedUrl) {
-          // LinkedIn PROFILE URL
-          setLinkedinUrl(extractedUrl);
-          setProfileSource("linkedin");
-          setConversationState("awaiting_job");
-
-          setTimeout(() => {
-            setIsTyping(false);
-            setMessages(prev => [...prev, {
-              id: (Date.now() + 1).toString(),
-              role: "assistant",
-              content: `Great! I've got your LinkedIn profile: ${extractedUrl}\n\nNow, please provide the job details. You can:\n\n1. Paste a LinkedIn job URL (recommended)\n2. Paste the job description text\n3. Type a job title (e.g., "Software Manager at OpenAI")`,
-              timestamp: new Date(),
-            }]);
-          }, 1000);
-        } else if (isUrl(messageText)) {
-          // Non-LinkedIn URL — not supported as profile input
-          setTimeout(() => {
-            setIsTyping(false);
-            setMessages(prev => [...prev, {
-              id: (Date.now() + 1).toString(),
-              role: "assistant",
-              content: "I can only fetch profiles from LinkedIn URLs directly.\n\nPlease provide your profile using one of these methods:\n\n1. Paste your LinkedIn profile URL\n2. Upload your resume file (use the paperclip button)\n3. Type a summary of your professional background",
-              timestamp: new Date(),
-            }]);
-          }, 1000);
-        } else if (messageText.trim().length > 20) {
-          // Free text — treat as profile description
-          setProfileText(messageText.trim());
-          setProfileSource("text");
-          setConversationState("awaiting_job");
-
-          setTimeout(() => {
-            setIsTyping(false);
-            setMessages(prev => [...prev, {
-              id: (Date.now() + 1).toString(),
-              role: "assistant",
-              content: `Thanks! I've noted your professional background.\n\nNow, please provide the job you're targeting. You can:\n\n1. Paste a LinkedIn job URL (recommended)\n2. Paste the job description text\n3. Type a job title (e.g., "Software Engineer at Google")`,
-              timestamp: new Date(),
-            }]);
-          }, 1000);
-        } else {
-          // Too short
-          setTimeout(() => {
-            setIsTyping(false);
-            setMessages(prev => [...prev, {
-              id: (Date.now() + 1).toString(),
-              role: "assistant",
-              content: "That's a bit brief. Could you provide more detail about your background?\n\nYou can:\n1. Paste your LinkedIn profile URL\n2. Upload your resume (use the paperclip button)\n3. Describe your experience, skills, and education in more detail",
-              timestamp: new Date(),
-            }]);
-          }, 1000);
-        }
-
-      } else if (conversationState === "awaiting_job") {
-        // Step 2: Collect job input
-        const jobInput = messageText.trim();
-
-        if (!jobInput) {
-          setTimeout(() => {
-            setIsTyping(false);
-            setMessages(prev => [...prev, {
-              id: (Date.now() + 1).toString(),
-              role: "assistant",
-              content: "Please provide job details. You can:\n\n1. Paste a LinkedIn job URL (recommended)\n2. Paste the job description text\n3. Type a job title (e.g., \"Software Manager at OpenAI\")",
-              timestamp: new Date(),
-            }]);
-          }, 1000);
-          return;
-        }
-
-        // Start processing
-        setIsTyping(false);
-        await startGeneration(jobInput, "Starting resume generation...");
-
-      } else if (conversationState === "completed") {
-        // Post-generation: ALL input goes through LLM so it can ask
-        // "what do you want to do?" instead of auto-triggering generation.
-        const hasProfile = profileSource === "linkedin" ? !!linkedinUrl : !!profileText;
-
-        // Only fallback: no profile saved at all → restart from scratch
-        if (!hasProfile) {
-          setTimeout(() => {
-            setIsTyping(false);
-            setMessages(prev => [...prev, {
-              id: (Date.now() + 1).toString(),
-              role: "assistant",
-              content: "Let's get started! Please share your professional background:\n\n1. Paste your LinkedIn profile URL\n2. Upload your resume (use the paperclip button)\n3. Type a summary of your experience",
-              timestamp: new Date(),
-            }]);
-            setConversationState("awaiting_linkedin");
-          }, 500);
-
-        // Everything else → LLM decides what to do
-        } else {
-          try {
-            // Build conversation history (last 15 messages for context).
-            // Note: messages state hasn't updated with the current user
-            // message yet (React batching), so this is prior context only.
-            // The current message is sent separately as the `message` field.
-            const recentHistory = messages.slice(-15).map(m => ({
-              role: m.role,
-              content: m.content,
-            }));
-
-            // If user just uploaded a file, prepend that info to the message
-            let enrichedMessage = messageText;
-            if (pendingFileText) {
-              enrichedMessage = `[User recently uploaded a file with this content (${pendingFileText.length} chars): "${pendingFileText.slice(0, 500)}..."]\n\nUser's message: ${messageText}`;
-              setPendingFileText("");
-            }
-
-            const chatResult = await api.chat({
-              message: enrichedMessage,
-              history: recentHistory,
-              context: {
-                profile_summary: profileSource === "linkedin"
-                  ? `LinkedIn profile: ${linkedinUrl}`
-                  : `Uploaded/typed profile (${profileText.length} chars)`,
-                job_title: lastJobTitle || undefined,
-                company: lastCompany || undefined,
-              },
-            });
-
-            setIsTyping(false);
-
-            // Always show Aria's response first
-            if (chatResult.response) {
-              setMessages(prev => [...prev, {
-                id: (Date.now() + 1).toString(),
-                role: "assistant",
-                content: chatResult.response,
-                timestamp: new Date(),
-              }]);
-            }
-
-            // Then act on the LLM's decision
-            if (chatResult.action === "generate" && chatResult.job_input) {
-              await startGeneration(chatResult.job_input, "Reusing your profile to generate a new resume and cover letter!");
-            } else if (chatResult.action === "edit" && chatResult.edit_instructions && lastJobInput) {
-              await startGeneration(lastJobInput, "Applying your changes...", chatResult.edit_instructions, chatResult.edit_target || "both", lastJobId || undefined);
-            }
-            // action === null → just the response, no generation
-
-          } catch {
-            setIsTyping(false);
-            setMessages(prev => [...prev, {
-              id: (Date.now() + 1).toString(),
-              role: "assistant",
-              content: "I'm having trouble processing that. You can paste a new job posting to generate another resume, or hit 'New Chat' to start fresh.",
-              timestamp: new Date(),
-            }]);
-          }
-        }
-
-      } else {
-        // "initial" state — fresh start
-        const extractedUrl = extractLinkedInUrl(messageText);
-
-        if (extractedUrl) {
-          setLinkedinUrl(extractedUrl);
-          setProfileSource("linkedin");
-          setProfileText("");
-          setConversationState("awaiting_job");
-
-          setTimeout(() => {
-            setIsTyping(false);
-            setMessages(prev => [...prev, {
-              id: (Date.now() + 1).toString(),
-              role: "assistant",
-              content: `Perfect! I've got your LinkedIn profile: ${extractedUrl}\n\nNow, please provide the job details:\n\n1. Paste a LinkedIn job URL (recommended)\n2. Paste the job description text\n3. Type a job title (e.g., "Software Manager at OpenAI")`,
-              timestamp: new Date(),
-            }]);
-          }, 1000);
-        } else {
-          setTimeout(() => {
-            setIsTyping(false);
-            setMessages(prev => [...prev, {
-              id: (Date.now() + 1).toString(),
-              role: "assistant",
-              content: "To get started, please share your professional background:\n\n1. Paste your LinkedIn profile URL\n2. Upload your resume (use the paperclip button)\n3. Type a summary of your experience",
-              timestamp: new Date(),
-            }]);
-            setConversationState("awaiting_linkedin");
-          }, 1000);
-        }
-      }
-
-    } catch (error) {
-      setIsTyping(false);
-      setIsProcessing(false);
-      // If we had a profile, return to completed so the user can retry
-      const hasProfile = profileSource === "linkedin" ? !!linkedinUrl : !!profileText;
-      setConversationState(hasProfile ? "completed" : "initial");
-      setMessages(prev => [...prev, {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: `Error: ${error instanceof Error ? error.message : 'Failed to start resume generation. Please try again.'}${hasProfile ? '\n\nYour profile is still saved — you can try again with a different job posting.' : ''}`,
         timestamp: new Date(),
       }]);
     }
@@ -632,7 +417,6 @@ export function ChatInterface({ onJobCreated }: ChatInterfaceProps) {
     setInputValue("");
     setIsTyping(false);
     setIsProcessing(false);
-    setConversationState("awaiting_linkedin");
     setLinkedinUrl("");
     setProfileText("");
     setProfileSource("");
@@ -640,15 +424,11 @@ export function ChatInterface({ onJobCreated }: ChatInterfaceProps) {
     setLastJobId("");
     setLastJobTitle("");
     setLastCompany("");
-    setPendingFileText("");
   };
 
   const getPlaceholder = () => {
     if (isProcessing) return "Processing...";
-    if (conversationState === "awaiting_linkedin") return "Paste LinkedIn URL, upload resume, or describe yourself...";
-    if (conversationState === "awaiting_job") return "Paste LinkedIn job URL or describe the role...";
-    if (conversationState === "completed") return "Ask a question, request edits, or paste a new job...";
-    return "Type a message or paste LinkedIn URL...";
+    return "Type a message, paste a URL, or upload a file...";
   };
 
   return (

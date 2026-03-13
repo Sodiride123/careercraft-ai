@@ -1238,65 +1238,74 @@ def chat_message():
     history_str = "\n".join(history_lines) if history_lines else "(no prior messages)"
 
     profile_summary = context.get('profile_summary', 'Not provided')
+    has_profile = context.get('has_profile', False)
+    has_generated = context.get('has_generated', False)
     job_title = context.get('job_title', 'Not specified')
     company = context.get('company', 'Not specified')
 
-    chat_prompt = f'''You are Aria, an AI career consultant chatbot. The user has just generated a resume and cover letter and is now chatting with you.
+    chat_prompt = f'''You are Aria, an AI career consultant that helps create tailored resumes and cover letters. You are the central brain — every user message comes to you, and you decide how to respond and what actions to take.
 
 SESSION CONTEXT:
-- User's profile: {profile_summary}
+- Current profile: {profile_summary}
+- Profile available: {"Yes" if has_profile else "No"}
+- Has generated resume: {"Yes" if has_generated else "No"}
 - Last generated for: {job_title} at {company}
+- Profile can be updated by providing a new LinkedIn URL or text
 
 RECENT CONVERSATION:
 {history_str}
 
 USER'S LATEST MESSAGE: "{message}"
 
-Respond as Aria and decide whether to take an action. Return ONLY valid JSON:
-{{"response": "your conversational reply (1-3 sentences)", "action": null or "generate" or "edit", "edit_target": "resume" or "cover_letter" or "both" or null, "job_input": null or "the complete job info if action is generate", "edit_instructions": null or "specific changes if action is edit"}}
+Respond as Aria and decide what to do. Return ONLY valid JSON:
+{{"response": "your conversational reply (1-3 sentences)", "action": null or "generate" or "edit", "new_linkedin_url": null or "the LinkedIn profile URL the user provided", "update_profile": false or true, "job_input": null or "the complete job info if action is generate", "edit_instructions": null or "specific changes if action is edit", "edit_target": "resume" or "cover_letter" or "both" or null}}
 
-CRITICAL RULES FOR CHOOSING ACTION:
-1. action = null (MOST COMMON — default to this when in doubt) — Use this when:
-   - The user is asking a question, saying thanks, or chatting
-   - The user says they WILL provide something but hasn't yet
-   - The user's request is vague and needs clarification
-   - You need more information before you can act
-   - The user shares a URL or info WITHOUT explicitly asking you to generate/create something
-   - The user shares a LinkedIn profile URL → ask what they want to do (update profile? analyze?)
-   - The user shares uploaded file content → ask what they want to do with it
+CRITICAL RULES:
 
-2. action = "generate" — ONLY when BOTH conditions are met:
-   a) The user provides ACTUAL job content (a job URL, full job description, or job title + company)
-   b) The user EXPLICITLY asks you to generate/create a resume or cover letter for it
-   Examples that DO trigger generate:
-   - "Generate a resume for this job: Senior Engineer at Netflix..."
-   - "Create a new resume for this: [job description]"
-   - "Here is a new job, please make a resume: [job URL]"
-   Examples that do NOT trigger generate (use action=null instead):
-   - "Here is a job posting: [URL]" (no explicit request to generate)
-   - "What do you think of this role? [job description]" (asking opinion)
-   - A bare URL with no instruction
-   - "I found this job" (just sharing, not requesting)
+1. PROFILE DETECTION:
+   - When the user provides a LinkedIn PROFILE URL (linkedin.com/in/...) → set "new_linkedin_url" to that URL. Do NOT put LinkedIn job URLs here.
+   - When the user provides professional background text, uploaded file content, or a resume → set "update_profile": true
+   - Profile updates can combine with actions (e.g. new profile + job in one message → set new_linkedin_url AND action="generate")
 
-3. action = "edit" — ONLY when the user gives a CLEAR, SPECIFIC modification request for the existing documents:
-   - "Make the cover letter shorter" → action=edit, edit_target="cover_letter"
-   - "Add more technical skills to the resume" → action=edit, edit_target="resume"
-   - "Make both documents more formal" → action=edit, edit_target="both"
-   - If unclear what to change, ask for clarification with action=null
+2. ACTION RULES:
+   a) action = null (MOST COMMON — default to this when in doubt):
+      - The user is asking a question, saying thanks, or chatting
+      - The user says they WILL provide something but hasn't yet
+      - The user's request is vague and needs clarification
+      - The user provides ONLY a profile (no job info) → acknowledge it and ask for job info
+      - The user provides job info but NO profile is available → ask for profile first
 
-EDIT TARGET RULES (only when action = "edit"):
-- edit_target = "resume" — the user only wants resume changes
-- edit_target = "cover_letter" — the user only wants cover letter changes
-- edit_target = "both" — the user wants changes to both documents
-- Always set edit_target when action = "edit"
+   b) action = "generate" — ONLY when BOTH conditions are met:
+      - A profile is available (either already saved OR being provided in this same message via new_linkedin_url/update_profile)
+      - The user provides ACTUAL job content (a job URL, full job description, or job title + company)
+      Note: If the user provides both profile and job info in one message, you CAN set both new_linkedin_url/update_profile AND action="generate" together.
+      Examples that trigger generate:
+      - "Generate a resume for this job: Senior Engineer at Netflix..." (profile already available)
+      - "Here's my LinkedIn linkedin.com/in/john and here's the job: [URL]" (profile + job together)
+      - User pastes a job URL or description when profile is already saved
+      Examples that do NOT trigger generate:
+      - "Here is a job posting: [URL]" (no explicit request to generate — use action=null, ask if they want to generate)
+      - Job info provided but no profile available → ask for profile first (action=null)
 
-RESPONSE RULES:
-- Stay in character as Aria, friendly and professional
-- 1-3 sentences max
-- For career questions, give helpful advice
-- For off-topic messages, gently redirect to career help
-- When action is "edit", briefly confirm what you'll change and which document
-- When action is "generate", confirm you're using their saved profile
+   c) action = "edit" — when the user requests specific changes to existing documents:
+      - "Make the cover letter shorter" → action=edit, edit_target="cover_letter"
+      - "Add more technical skills to the resume" → action=edit, edit_target="resume"
+      - "Make both documents more formal" → action=edit, edit_target="both"
+      - Requires a resume to have been generated previously
+
+3. EDIT TARGET RULES (only when action = "edit"):
+   - edit_target = "resume" — user only wants resume changes
+   - edit_target = "cover_letter" — user only wants cover letter changes
+   - edit_target = "both" — user wants changes to both documents
+
+4. RESPONSE RULES:
+   - Stay in character as Aria, friendly and professional
+   - 1-3 sentences max
+   - If no profile yet, warmly ask the user to share their LinkedIn URL, upload a resume, or describe their background
+   - When action is "generate", briefly confirm what you're doing
+   - When action is "edit", briefly confirm what you'll change
+   - For career questions, give helpful advice
+   - For off-topic messages, gently redirect to career help
 
 Only output the JSON object. No markdown, no extra text, no code fences.'''
 
@@ -1319,6 +1328,16 @@ Only output the JSON object. No markdown, no extra text, no code fences.'''
                     json_end = i + 1
                     break
 
+        fallback_response = {
+            "response": "",
+            "action": None,
+            "new_linkedin_url": None,
+            "update_profile": False,
+            "edit_target": None,
+            "job_input": None,
+            "edit_instructions": None,
+        }
+
         if json_start is not None and json_end is not None:
             parsed = json.loads(result[json_start:json_end])
             response_text = parsed.get('response', '')
@@ -1326,6 +1345,8 @@ Only output the JSON object. No markdown, no extra text, no code fences.'''
             job_input = parsed.get('job_input')
             edit_instructions = parsed.get('edit_instructions')
             edit_target = parsed.get('edit_target')
+            new_linkedin_url = parsed.get('new_linkedin_url')
+            update_profile = bool(parsed.get('update_profile', False))
 
             # Validate action
             if action not in (None, 'generate', 'edit'):
@@ -1345,32 +1366,38 @@ Only output the JSON object. No markdown, no extra text, no code fences.'''
             if action == 'edit' and not edit_target:
                 edit_target = 'both'
 
+            # Validate new_linkedin_url (must look like a LinkedIn profile URL)
+            if new_linkedin_url and not isinstance(new_linkedin_url, str):
+                new_linkedin_url = None
+            if new_linkedin_url and 'linkedin.com' not in new_linkedin_url.lower():
+                new_linkedin_url = None
+
             return jsonify({
                 "response": response_text,
                 "action": action,
+                "new_linkedin_url": new_linkedin_url,
+                "update_profile": update_profile,
                 "edit_target": edit_target,
                 "job_input": job_input,
                 "edit_instructions": edit_instructions,
             })
         else:
             # Couldn't parse JSON — return raw text as response, no action
-            return jsonify({
-                "response": result[:500] if result else "I'm here to help with your resume and career questions!",
-                "action": None,
-                "edit_target": None,
-                "job_input": None,
-                "edit_instructions": None,
-            })
+            fallback_response["response"] = result[:500] if result else "I'm here to help with your resume and career questions!"
+            return jsonify(fallback_response)
 
     except Exception as e:
         logger.error(f"Chat endpoint error: {e}")
-        return jsonify({
+        fallback_response = {
             "response": "I'm having trouble processing that right now. You can paste a new job posting to generate another resume, or hit 'New Chat' to start fresh.",
             "action": None,
+            "new_linkedin_url": None,
+            "update_profile": False,
             "edit_target": None,
             "job_input": None,
             "edit_instructions": None,
-        })
+        }
+        return jsonify(fallback_response)
 
 
 @app.route('/api/health')
@@ -1401,6 +1428,37 @@ def get_resumes():
     completed_resumes.sort(key=lambda x: x['created_at'], reverse=True)
     
     return jsonify({"resumes": completed_resumes})
+
+
+@app.route('/api/resumes/<job_id>', methods=['DELETE'])
+def delete_resume(job_id):
+    """Delete a resume/cover letter by job_id"""
+    if job_id not in jobs:
+        return jsonify({"error": "Document not found"}), 404
+
+    # Remove output files
+    output_dir = os.path.join(os.path.dirname(__file__), "output")
+    file_patterns = [
+        f"{job_id}_resume.html",
+        f"{job_id}_resume.pdf",
+        f"{job_id}_cover_letter.html",
+        f"{job_id}_cover_letter.pdf",
+        f"{job_id}_profile.json",
+        f"{job_id}_job.json",
+    ]
+    for filename in file_patterns:
+        filepath = os.path.join(output_dir, filename)
+        if os.path.exists(filepath):
+            try:
+                os.remove(filepath)
+            except Exception as e:
+                logger.warning(f"Failed to delete file {filepath}: {e}")
+
+    # Remove from in-memory store and persist
+    del jobs[job_id]
+    save_jobs_index()
+
+    return jsonify({"success": True, "message": "Document deleted"})
 
 
 if __name__ == '__main__':

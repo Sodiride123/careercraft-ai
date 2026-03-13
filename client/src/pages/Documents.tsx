@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
-import { Clock, Download, Eye, FileText, Loader2, Mail, Search, X } from "lucide-react";
+import { Clock, Download, Eye, FileText, Loader2, Mail, Search, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface Resume {
@@ -139,6 +139,23 @@ export default function Documents() {
 
   const handleDownloadCoverLetter = (jobId: string) => {
     window.open(api.getCoverLetterUrl(jobId), '_blank');
+  };
+
+  const handleDelete = async (jobId: string, title: string) => {
+    if (!confirm(`Delete "${title}"? This will remove both the resume and cover letter permanently.`)) {
+      return;
+    }
+    try {
+      await api.deleteResume(jobId);
+      setResumes(prev => prev.filter(r => r.job_id !== jobId));
+      // Close preview if it was showing the deleted document
+      if (preview.open && preview.jobId === jobId) {
+        closePreview();
+      }
+    } catch (error) {
+      console.error("Error deleting document:", error);
+      alert("Failed to delete document. Please try again.");
+    }
   };
 
   const handlePreview = (resume: Resume) => {
@@ -323,6 +340,15 @@ export default function Documents() {
                   >
                     <Download className="h-3 w-3 mr-1" />
                     Download
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs h-8 w-8 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10 hover:border-destructive/30"
+                    onClick={() => handleDelete(resume.job_id, getResumeTitle(resume))}
+                    title="Delete"
+                  >
+                    <Trash2 className="h-3 w-3" />
                   </Button>
                 </CardFooter>
               </Card>

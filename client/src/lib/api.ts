@@ -33,6 +33,8 @@ interface ChatRequest {
   history?: { role: string; content: string }[];
   context?: {
     profile_summary?: string;
+    has_profile?: boolean;
+    has_generated?: boolean;
     job_title?: string;
     company?: string;
   };
@@ -41,6 +43,8 @@ interface ChatRequest {
 interface ChatResponse {
   response: string;
   action: "generate" | "edit" | null;
+  new_linkedin_url: string | null;
+  update_profile: boolean;
   edit_target: "resume" | "cover_letter" | "both" | null;
   job_input: string | null;
   edit_instructions: string | null;
@@ -151,6 +155,12 @@ class ApiClient {
     }
 
     return response.json();
+  }
+
+  async deleteResume(jobId: string): Promise<{ success: boolean; message: string }> {
+    return this.request(`/api/resumes/${jobId}`, {
+      method: "DELETE",
+    });
   }
 
   async chat(data: ChatRequest): Promise<ChatResponse> {

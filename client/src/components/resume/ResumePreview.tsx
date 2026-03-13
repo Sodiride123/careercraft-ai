@@ -51,15 +51,6 @@ export function ResumePreview({ jobId }: ResumePreviewProps) {
     }
   };
 
-  const getPreviewUrl = () => {
-    if (!jobId) return "";
-    if (previewType === "resume") {
-      return `${getApiBaseUrl()}/output/${jobId}_resume.html`;
-    } else {
-      return `${getApiBaseUrl()}/output/${jobId}_cover_letter.html`;
-    }
-  };
-
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between mb-4 px-2">
@@ -143,11 +134,20 @@ export function ResumePreview({ jobId }: ResumePreviewProps) {
         )}
 
         {hasResume && (
-          <iframe
-            src={getPreviewUrl()}
-            className="w-full h-full border-0"
-            title={previewType === "resume" ? "Resume Preview" : "Cover Letter Preview"}
-          />
+          <>
+            <iframe
+              src={`${getApiBaseUrl()}/output/${jobId}_resume.html`}
+              className="w-full h-full border-0"
+              style={{ display: previewType === "resume" ? "block" : "none" }}
+              title="Resume Preview"
+            />
+            <iframe
+              src={`${getApiBaseUrl()}/output/${jobId}_cover_letter.html`}
+              className="w-full h-full border-0"
+              style={{ display: previewType === "coverLetter" ? "block" : "none" }}
+              title="Cover Letter Preview"
+            />
+          </>
         )}
       </Card>
     </div>
