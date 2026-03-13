@@ -4,7 +4,7 @@ import { ResumePreview } from "@/components/resume/ResumePreview";
 
 interface HomeProps {
   currentJobId: string | null;
-  onJobCreated: (jobId: string) => void;
+  onJobCreated: (jobId: string | null) => void;
 }
 
 export default function Home({ currentJobId, onJobCreated }: HomeProps) {

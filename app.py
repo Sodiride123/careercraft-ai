@@ -387,35 +387,32 @@ def generate_resume_with_claude(job: ResumeGeneratorJob):
                 if edit_target in ('resume', 'both'):
                     job.progress = 40
                     job.current_step = "Updating resume..."
-                    job.add_log(f"Regenerating resume with edits: {edit_instructions[:100]}")
+                    job.add_log(f"Editing resume with: {edit_instructions[:100]}")
 
-                    resume_prompt = f'''You are a professional resume writer. Create a complete, ATS-friendly HTML resume based on the data provided.
+                    # Read the existing resume HTML to use as the base
+                    prev_resume_path = os.path.join(output_dir, f"{previous_job_id}_resume.html")
+                    existing_resume_html = ""
+                    if os.path.exists(prev_resume_path):
+                        with open(prev_resume_path, 'r') as f:
+                            existing_resume_html = f.read()
 
-LINKEDIN PROFILE DATA:
-{profile_result}
+                    resume_prompt = f'''You are a professional resume editor. You will be given an existing HTML resume and a specific edit request from the user.
 
-JOB DETAILS:
-{job_result}
+EXISTING RESUME HTML:
+{existing_resume_html}
 
-IMPORTANT INSTRUCTIONS:
-- Work with the job information provided, even if brief
-- If job details are limited, focus on making the candidate's experience relevant to the job title and company
-- Tailor the professional summary to align with the job title
-- Highlight transferable skills and relevant experience
-- DO NOT ask for more information - create the resume with what's provided
-
-Create a complete HTML resume that:
-1. Is tailored for the specific job position (use the job title and company name provided)
-2. Highlights skills and experience that would be relevant for this role
-3. Uses a clean, professional design with inline CSS
-4. Is ATS-friendly (simple formatting, standard sections)
-5. Includes: Header with name/contact, Professional Summary (tailored to the job), Experience, Education, Skills
-
-USER MODIFICATION REQUEST:
-The user has specifically asked for the following changes to the resume. Please incorporate this feedback:
+USER'S EDIT REQUEST:
 {edit_instructions}
 
-Output ONLY the complete HTML code starting with <!DOCTYPE html> and ending with </html>. No explanations, no questions, no markdown - just the HTML.'''
+CRITICAL RULES:
+- ONLY modify the specific parts the user asked about
+- Keep ALL other content, sections, styling, and formatting EXACTLY as they are
+- Do NOT rewrite or rephrase sections that weren't mentioned in the edit request
+- Do NOT change the overall design, layout, colors, or CSS unless specifically asked
+- Do NOT add or remove sections unless specifically asked
+- Preserve all existing data (dates, company names, job titles, bullet points) that the user didn't ask to change
+
+Output the complete modified HTML resume starting with <!DOCTYPE html> and ending with </html>. No explanations, no questions, no markdown - just the HTML.'''
 
                     html_result = run_claude_command(resume_prompt, timeout=300, use_tools=False)
                     html_match = re.search(r'<!DOCTYPE html>.*?</html>', html_result, re.DOTALL | re.IGNORECASE)
@@ -451,44 +448,32 @@ Output ONLY the complete HTML code starting with <!DOCTYPE html> and ending with
                 if edit_target in ('cover_letter', 'both'):
                     job.progress = 70
                     job.current_step = "Updating cover letter..."
-                    job.add_log(f"Regenerating cover letter with edits: {edit_instructions[:100]}")
+                    job.add_log(f"Editing cover letter with: {edit_instructions[:100]}")
 
-                    cover_letter_prompt = f'''You are a professional cover letter writer. Create a complete, professional cover letter in HTML format based on the data provided.
+                    # Read the existing cover letter HTML to use as the base
+                    prev_cl_path = os.path.join(output_dir, f"{previous_job_id}_cover_letter.html")
+                    existing_cl_html = ""
+                    if os.path.exists(prev_cl_path):
+                        with open(prev_cl_path, 'r') as f:
+                            existing_cl_html = f.read()
 
-LINKEDIN PROFILE DATA:
-{profile_result}
+                    cover_letter_prompt = f'''You are a professional cover letter editor. You will be given an existing HTML cover letter and a specific edit request from the user.
 
-JOB DETAILS:
-{job_result}
+EXISTING COVER LETTER HTML:
+{existing_cl_html}
 
-IMPORTANT INSTRUCTIONS:
-- Work with the job information provided, even if brief
-- If job details are limited, focus on the job title and company name provided
-- Make reasonable assumptions about what the role might entail based on the job title
-- DO NOT ask for more information - create the cover letter with what's provided
-
-Create a complete HTML cover letter that:
-1. Is professionally formatted with proper business letter structure
-2. Is personalized for the specific job and company (use the job title and company name provided)
-3. Highlights relevant experience and skills from the profile
-4. Shows enthusiasm for the role and company
-5. Uses a clean, professional design with inline CSS
-6. Includes: Date, Hiring Manager greeting, 3-4 compelling paragraphs, Professional closing
-7. Is approximately 300-400 words in the body
-
-The cover letter should:
-- Opening paragraph: Express interest in the specific position and company
-- Second paragraph: Highlight 2-3 most relevant experiences/achievements from the profile
-- Third paragraph: Explain why you're a great fit for this type of role
-- Closing paragraph: Express enthusiasm, mention availability for interview, thank them
-
-Use professional HTML styling with inline CSS.
-
-USER MODIFICATION REQUEST:
-The user has specifically asked for the following changes to the cover letter. Please incorporate this feedback:
+USER'S EDIT REQUEST:
 {edit_instructions}
 
-Output ONLY the complete HTML code starting with <!DOCTYPE html> and ending with </html>. No explanations, no questions, no markdown - just the HTML.'''
+CRITICAL RULES:
+- ONLY modify the specific parts the user asked about
+- Keep ALL other content, paragraphs, styling, and formatting EXACTLY as they are
+- Do NOT rewrite or rephrase paragraphs that weren't mentioned in the edit request
+- Do NOT change the overall design, layout, colors, or CSS unless specifically asked
+- Do NOT change the greeting, closing, or structure unless specifically asked
+- Preserve all existing content that the user didn't ask to change
+
+Output the complete modified HTML cover letter starting with <!DOCTYPE html> and ending with </html>. No explanations, no questions, no markdown - just the HTML.'''
 
                     cl_result = run_claude_command(cover_letter_prompt, timeout=300, use_tools=False)
                     cl_match = re.search(r'<!DOCTYPE html>.*?</html>', cl_result, re.DOTALL | re.IGNORECASE)
@@ -833,7 +818,7 @@ Output ONLY the complete HTML code starting with <!DOCTYPE html> and ending with
             resume_prompt += f'''
 
 USER MODIFICATION REQUEST:
-The user has specifically asked for the following changes to the resume. Please incorporate this feedback:
+The user has specifically asked for the following changes. ONLY modify the parts they mentioned. Keep everything else exactly as you would normally generate it.
 {edit_instructions}'''
             job.add_log(f"Applying edit instructions to resume: {edit_instructions[:100]}")
 
@@ -901,7 +886,7 @@ Output ONLY the complete HTML code starting with <!DOCTYPE html> and ending with
             cover_letter_prompt += f'''
 
 USER MODIFICATION REQUEST:
-The user has specifically asked for the following changes to the cover letter. Please incorporate this feedback:
+The user has specifically asked for the following changes. ONLY modify the parts they mentioned. Keep everything else exactly as you would normally generate it.
 {edit_instructions}'''
             job.add_log(f"Applying edit instructions to cover letter: {edit_instructions[:100]}")
 

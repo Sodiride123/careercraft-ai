@@ -14,29 +14,34 @@ export function ResumePreview({ jobId }: ResumePreviewProps) {
   const [previewType, setPreviewType] = useState<"resume" | "coverLetter">("resume");
 
   useEffect(() => {
-    if (jobId) {
-      setIsLoading(true);
-      setPreviewType("resume"); // Reset to resume when new job
-      // Poll for job completion
-      const checkStatus = async () => {
-        try {
-          const status = await api.getJobStatus(jobId);
-          if (status.status === "completed") {
-            setHasResume(true);
-            setIsLoading(false);
-          } else if (status.status === "failed") {
-            setIsLoading(false);
-          }
-        } catch (error) {
-          console.error("Error checking job status:", error);
-        }
-      };
-
-      const interval = setInterval(checkStatus, 2000);
-      checkStatus();
-
-      return () => clearInterval(interval);
+    if (!jobId) {
+      setHasResume(false);
+      setIsLoading(false);
+      setPreviewType("resume");
+      return;
     }
+
+    setIsLoading(true);
+    setPreviewType("resume"); // Reset to resume when new job
+    // Poll for job completion
+    const checkStatus = async () => {
+      try {
+        const status = await api.getJobStatus(jobId);
+        if (status.status === "completed") {
+          setHasResume(true);
+          setIsLoading(false);
+        } else if (status.status === "failed") {
+          setIsLoading(false);
+        }
+      } catch (error) {
+        console.error("Error checking job status:", error);
+      }
+    };
+
+    const interval = setInterval(checkStatus, 2000);
+    checkStatus();
+
+    return () => clearInterval(interval);
   }, [jobId]);
 
   const handleDownloadResume = () => {

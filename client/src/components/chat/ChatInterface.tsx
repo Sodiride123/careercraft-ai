@@ -1,11 +1,10 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { ArrowUp, Bot, FileText, Link as LinkIcon, Paperclip, SquarePen, User, AlertCircle, Upload } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface Message {
   id: string;
@@ -16,7 +15,7 @@ interface Message {
 }
 
 interface ChatInterfaceProps {
-  onJobCreated?: (jobId: string) => void;
+  onJobCreated?: (jobId: string | null) => void;
 }
 
 type ProfileSource = "linkedin" | "file" | "text" | "";
@@ -82,6 +81,14 @@ export function ChatInterface({ onJobCreated }: ChatInterfaceProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const pollingInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const autoResizeTextarea = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 160) + "px";
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -348,6 +355,7 @@ export function ChatInterface({ onJobCreated }: ChatInterfaceProps) {
 
     const msg = inputValue;
     setInputValue("");
+    if (textareaRef.current) textareaRef.current.style.height = "auto";
 
     setMessages(prev => [...prev, {
       id: Date.now().toString(),
@@ -424,6 +432,7 @@ export function ChatInterface({ onJobCreated }: ChatInterfaceProps) {
     setLastJobId("");
     setLastJobTitle("");
     setLastCompany("");
+    if (onJobCreated) onJobCreated(null);
   };
 
   const getPlaceholder = () => {
@@ -547,13 +556,20 @@ export function ChatInterface({ onJobCreated }: ChatInterfaceProps) {
               <Paperclip className="h-4 w-4" />
             </Button>
 
-            <Input
+            <textarea
+              ref={textareaRef}
               value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSendMessage()}
+              onChange={(e) => { setInputValue(e.target.value); autoResizeTextarea(); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
+              }}
               placeholder={getPlaceholder()}
-              className="border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-2 py-3 h-auto max-h-32 shadow-none"
+              className="flex-1 resize-none border-0 bg-transparent focus:outline-none focus:ring-0 px-2 py-3 text-sm min-h-[44px] max-h-[160px] shadow-none"
               disabled={isProcessing}
+              rows={1}
             />
 
             <Button
